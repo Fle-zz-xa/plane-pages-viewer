@@ -18,6 +18,7 @@ export interface PageNode extends PlanePage {
 
 const PLANE_BASE_URL = 'https://plane.rivetta.eu/api';
 const WORKSPACE_SLUG = 'rivetta'; // TODO: get from env
+const PLANE_APP_URL = 'https://plane.rivetta.eu'; // For cookie sharing
 
 // CSRF Token management
 let csrfToken: string | null = null;
@@ -43,12 +44,28 @@ export async function getCsrfToken(): Promise<string> {
 }
 
 // Get auth headers for API requests
+// IMPORTANT: Must be called from a page that shares cookies with plane.rivetta.eu
 export async function getAuthHeaders(): Promise<HeadersInit> {
   const token = await getCsrfToken();
   return {
     'Content-Type': 'application/json',
     'X-CSRFToken': token,
   };
+}
+
+// Helper to check if user is authenticated
+export async function checkAuth(): Promise<boolean> {
+  try {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${PLANE_BASE_URL}/workspaces/`, {
+      method: 'GET',
+      headers,
+      credentials: 'include',
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
 }
 
 // Fetch all pages from workspace

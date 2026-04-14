@@ -1,27 +1,40 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { fetchPages, buildTree, PageNode, PlanePage } from '@/lib/plane-api';
+import { fetchPages, buildTree, PageNode, PlanePage, checkAuth } from '@/lib/plane-api';
 import { PageTree } from '@/components/PageTree';
-import { FolderTree, Loader2, AlertCircle, FileText } from 'lucide-react';
+import { FolderTree, Loader2, AlertCircle, FileText, ExternalLink } from 'lucide-react';
 
 export default function VaultViewer() {
   const [pages, setPages] = useState<PageNode[]>([]);
   const [selectedPage, setSelectedPage] = useState<PlanePage | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
-  // Fetch pages on mount
+  // Check auth and fetch pages on mount
   useEffect(() => {
     async function loadPages() {
       try {
         setLoading(true);
+        
+        // Check authentication first
+        const authed = await checkAuth();
+        setIsAuthenticated(authed);
+        
+        if (!authed) {
+          setError('Not authenticated');
+          setLoading(false);
+          return;
+        }
+        
         const flatPages = await fetchPages('rivetta');
         const tree = buildTree(flatPages);
         setPages(tree);
         setError(null);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load pages');
+        setIsAuthenticated(false);
       } finally {
         setLoading(false);
       }
@@ -60,15 +73,42 @@ export default function VaultViewer() {
             </div>
           )}
 
-          {error && (
+          {error && isAuthenticated === false && (
+            <div className="p-4 m-4 bg-amber-50 border border-amber-200 rounded-lg">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-5 h-5 text-amber-500" />
+                <p className="text-sm text-amber-800 font-semibold">Login required</p>
+              </div>
+              <p className="text-sm text-amber-700 mt-2">
+                You need to be logged in to Plane to view pages.
+              </p>
+              <a
+                href="https://plane.rivetta.eu"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 mt-3 px-4 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-700 transition-colors text-sm font-medium"
+              >
+                <ExternalLink className="w-4 h-4" />
+                Open Plane to Login
+              </a>
+              <p className="text-xs text-amber-600 mt-3">
+                After logging in, refresh this page. Make sure to open Plane in the same browser.
+              </p>
+            </div>
+          )}
+
+          {error && isAuthenticated === true && (
             <div className="p-4 m-4 bg-red-50 border border-red-200 rounded-lg">
               <div className="flex items-center gap-2">
                 <AlertCircle className="w-5 h-5 text-red-500" />
                 <p className="text-sm text-red-800">{error}</p>
               </div>
-              <p className="text-xs text-red-600 mt-2">
-                Make sure you're logged in to Plane and have access to the workspace.
-              </p>
+              <button
+                onClick={() => window.location.reload()}
+                className="mt-3 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors text-sm font-medium"
+              >
+                Retry
+              </button>
             </div>
           )}
 
