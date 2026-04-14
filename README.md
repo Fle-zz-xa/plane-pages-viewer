@@ -1,117 +1,36 @@
-# Plane Pages Hierarchical Viewer
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-**Doel:** Collapsible tree view voor Plane Pages met parent-child relaties.
+## Getting Started
 
-**Status:** 🟡 In ontwikkeling
+First, run the development server:
 
----
-
-## Architectuur
-
-```
-┌─────────────────────────────────────────────────────┐
-│  Plane API (plane.rivetta.eu/api/)                 │
-│  GET /api/workspaces/{slug}/pages/                 │
-│  Returns: pages[] met parent_id, sort_order        │
-└──────────────────┬──────────────────────────────────┘
-                   │ REST API (CSRf auth)
-                   ▼
-┌─────────────────────────────────────────────────────┐
-│  Next.js App (rivetta.eu/vault-viewer)             │
-│  - Fetch pages van Plane API                       │
-│  - Build tree from parent_id                       │
-│  - Render collapsible tree                         │
-│  - Click page → show content                       │
-└─────────────────────────────────────────────────────┘
+```bash
+npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+# or
+bun dev
 ```
 
----
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-## Dev Workflow
+You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
-1. **Code op GitHub** — `Fle-zz-xa/plane-pages-viewer`
-2. **Plane project voor tracking** — taken, bugs, features in Plane zelf
-3. **Lokaal testen** — `npm run dev` → http://localhost:3003
-4. **Deploy** — Cloudflare Pages (rivetta-eu project)
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
----
+## Learn More
 
-## Technische Specificatie
+To learn more about Next.js, take a look at the following resources:
 
-### Data Structuur
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
 
-```json
-{
-  "id": "uuid",
-  "name": "📁 Care+ Subscription",
-  "parent_id": null,
-  "sort_order": 65536,
-  "is_global": true,
-  "description_html": "<h2>Content</h2>..."
-}
-```
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-### Tree Building Algorithm
+## Deploy on Vercel
 
-```typescript
-interface PageNode {
-  id: string;
-  name: string;
-  parent_id: string | null;
-  children: PageNode[];
-  description_html?: string;
-}
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
-function buildTree(pages: Page[]): PageNode[] {
-  const tree: PageNode[] = [];
-  const lookup = new Map<string, PageNode>();
-
-  pages.forEach(page => {
-    lookup.set(page.id, { ...page, children: [] });
-  });
-
-  pages.forEach(page => {
-    const node = lookup.get(page.id)!;
-    if (page.parent_id && lookup.has(page.parent_id)) {
-      lookup.get(page.parent_id)!.children.push(node);
-    } else {
-      tree.push(node);
-    }
-  });
-
-  return tree;
-}
-```
-
----
-
-## Taken
-
-- [ ] GitHub repo aanmaken + initial commit
-- [ ] Next.js project scaffold (`npx create-next-app`)
-- [ ] Plane API auth flow implementeren (CSRF token)
-- [ ] Pages fetch + tree builder
-- [ ] Collapsible tree UI component
-- [ ] Page content viewer (rechts panel)
-- [ ] Deploy naar Cloudflare Pages
-- [ ] Link toevoegen in Plane sidebar (custom navigation)
-
----
-
-## Deployment
-
-**Cloudflare Pages:**
-- Project: `rivetta-eu` (zelfde als main site)
-- Route: `/vault-viewer` → Next.js app
-- Build: `npm run build`
-- Output: `dist/`
-
-**Optioneel:** Embed als widget in Plane zelf (als Plane custom widgets ondersteunt).
-
----
-
-## Referenties
-
-- Plane API docs: https://docs.plane.so/
-- Plane instance: https://plane.rivetta.eu
-- GitHub org: https://github.com/Fle-zz-xa
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
