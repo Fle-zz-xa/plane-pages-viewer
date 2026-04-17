@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Search, Settings, Plus, BookOpen, Loader2, AlertCircle, X } from 'lucide-react';
+import Link from 'next/link';
+import { Search, Settings, Plus, BookOpen, Loader2, AlertCircle, X, Package, ChevronRight } from 'lucide-react';
 import { PageNode, PlanePage } from '@/lib/plane-api';
 import { PageTree } from '@/components/PageTree';
 import { CreatePageModal } from '@/components/CreatePageModal';
@@ -71,6 +72,22 @@ export function WikiSidebar({
               <Settings className="w-4 h-4" />
             </button>
           </div>
+        </div>
+
+        {/* Projects nav link */}
+        <div className="px-3 pb-2">
+          <Link
+            href="/projects"
+            className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors border border-gray-100 group"
+          >
+            <Package className="w-4 h-4 text-gray-400 group-hover:text-indigo-500" />
+            <span className="flex-1">Projecten</span>
+            <ChevronRight className="w-3.5 h-3.5 text-gray-300 group-hover:text-indigo-400" />
+          </Link>
+        </div>
+
+        <div className="px-3 pb-1">
+          <div className="h-px bg-gray-100" />
         </div>
 
         {/* Search */}
