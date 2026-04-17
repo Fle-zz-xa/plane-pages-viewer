@@ -3,14 +3,15 @@
 import { useState, useMemo } from 'react';
 import {
   ArrowLeft, ChevronRight, Trash2, Loader2,
-  FileText, MoreHorizontal, Archive, CheckCircle2,
+  FileText, MoreHorizontal, Archive, CheckCircle2, Megaphone,
 } from 'lucide-react';
-import { PlaneProject, updateProject, deleteProject } from '@/lib/projects-api';
+import { PlaneProject, updateProject, deleteProject, createProjectPage } from '@/lib/projects-api';
 import { parsePhase, getNextPhase, encodePhase, stripPhaseMarker, PHASES, PHASE_ORDER, ProjectPhase } from '@/lib/phase';
 import { getSettings } from '@/lib/settings';
 import { makeProjectWikiApi } from '@/lib/wiki-api';
 import { WikiPane } from '@/components/WikiPane';
 import { TaskBoard } from '@/components/TaskBoard';
+import { HandoffModal } from '@/components/HandoffModal';
 
 interface Props {
   project: PlaneProject;
@@ -45,6 +46,7 @@ function PhaseTimeline({ current }: { current: ProjectPhase }) {
 export function ProjectDetail({ project, onBack, onProjectUpdated, onProjectDeleted }: Props) {
   const [activeTab, setActiveTab] = useState<'tasks' | 'pages'>('tasks');
   const [advancingPhase, setAdvancingPhase] = useState(false);
+  const [showHandoff, setShowHandoff] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -58,6 +60,8 @@ export function ProjectDetail({ project, onBack, onProjectUpdated, onProjectDele
 
   const handleAdvancePhase = async () => {
     if (!nextPhase) return;
+    // Intercept production → release: show handoff modal
+    if (phase === 'production') { setShowHandoff(true); return; }
     setAdvancingPhase(true);
     try {
       const { apiKey, workspaceSlug, planeBaseUrl } = getSettings();
@@ -70,6 +74,39 @@ export function ProjectDetail({ project, onBack, onProjectUpdated, onProjectDele
     } finally {
       setAdvancingPhase(false);
     }
+  };
+
+  const handleHandoffConfirm = async (briefing: string, checkedItems: string[]) => {
+    setAdvancingPhase(true);
+    const { apiKey, workspaceSlug, planeBaseUrl } = getSettings();
+    const today = new Date().toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
+
+    // Build briefing page HTML
+    const checklistHtml = checkedItems.map(item => `<li>✅ ${item}</li>`).join('');
+    const briefingHtml = `
+      <h2>Handover — ${project.name}</h2>
+      <p><strong>Datum:</strong> ${today}</p>
+      <h3>Checklist afgerond</h3>
+      <ul>${checklistHtml}</ul>
+      ${briefing.trim() ? `<h3>Toelichting voor Marketing &amp; Sales</h3><p>${briefing.replace(/\n/g, '<br/>')}</p>` : ''}
+    `.trim();
+
+    // Create handover briefing page + advance phase in parallel
+    await Promise.all([
+      createProjectPage(planeBaseUrl, workspaceSlug, apiKey, project.id, {
+        name: `Handover briefing — ${today}`,
+        parent_id: null,
+        is_global: false,
+        description_html: briefingHtml,
+        sort_order: 0,
+      }),
+      updateProject(planeBaseUrl, workspaceSlug, apiKey, project.id, {
+        description: encodePhase('release', stripPhaseMarker(project.description)),
+      }).then(onProjectUpdated),
+    ]);
+
+    setShowHandoff(false);
+    setAdvancingPhase(false);
   };
 
   const handleArchive = async () => {
@@ -152,6 +189,17 @@ export function ProjectDetail({ project, onBack, onProjectUpdated, onProjectDele
           </div>
         </div>
 
+        {/* Handoff banner for release/marketing phases */}
+        {(phase === 'release' || phase === 'marketing') && (
+          <div className="flex items-center gap-2 px-6 py-2 bg-gradient-to-r from-green-50 to-pink-50 border-b border-green-100 shrink-0">
+            <Megaphone className="w-3.5 h-3.5 text-pink-500 shrink-0" />
+            <p className="text-xs text-gray-600">
+              <span className="font-semibold text-pink-700">Marketing & Sales fase</span>
+              {' '}— handover ontvangen van Development. Zie <button onClick={() => setActiveTab('pages')} className="underline hover:text-indigo-600">"Pagina's"</button> voor de handover briefing.
+            </p>
+          </div>
+        )}
+
         {/* Tab bar */}
         <div className="flex items-center gap-1 px-4 py-2 border-b border-gray-100 shrink-0">
           <button
@@ -180,6 +228,14 @@ export function ProjectDetail({ project, onBack, onProjectUpdated, onProjectDele
           }
         </div>
       </div>
+
+      {showHandoff && (
+        <HandoffModal
+          project={project}
+          onConfirm={handleHandoffConfirm}
+          onCancel={() => setShowHandoff(false)}
+        />
+      )}
 
       {confirmDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
