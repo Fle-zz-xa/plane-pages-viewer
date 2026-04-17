@@ -14,7 +14,7 @@ interface Props {
   loading: boolean;
   error: string | null;
   onSelectPage: (page: PageNode) => void;
-  onCreatePage: () => void;
+  onCreatePage: (selectId?: string) => void;
   onShowSettings: () => void;
 }
 
@@ -165,7 +165,7 @@ export function WikiSidebar({
               selectedPageId={selectedPageId}
               onSelectPage={onSelectPage}
               allPages={allPages}
-              onRefresh={onCreatePage}
+              onRefresh={id => onCreatePage(id)}
             />
           )}
         </div>
@@ -186,9 +186,9 @@ export function WikiSidebar({
         <CreatePageModal
           allPages={allPages}
           onClose={() => setShowCreate(false)}
-          onCreated={() => {
+          onCreated={(id) => {
             setShowCreate(false);
-            onCreatePage();
+            onCreatePage(id);
           }}
         />
       )}

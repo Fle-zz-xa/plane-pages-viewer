@@ -9,7 +9,7 @@ interface Props {
   allPages: PlanePage[];
   defaultParentId?: string | null;
   onClose: () => void;
-  onCreated: () => void;
+  onCreated: (id: string) => void;
 }
 
 export function CreatePageModal({ allPages, defaultParentId, onClose, onCreated }: Props) {
@@ -25,13 +25,13 @@ export function CreatePageModal({ allPages, defaultParentId, onClose, onCreated 
     setError(null);
     try {
       const { apiKey, workspaceSlug, planeBaseUrl } = getSettings();
-      await createPage(planeBaseUrl, workspaceSlug, apiKey, {
+      const created = await createPage(planeBaseUrl, workspaceSlug, apiKey, {
         name: name.trim(),
         parent_id: parentId || null,
         is_global: true,
         description_html: isFolder ? '' : '<p></p>',
       });
-      onCreated();
+      onCreated(created.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Aanmaken mislukt');
     } finally {

@@ -14,7 +14,7 @@ interface PageNodeProps {
   selectedPageId: string | null;
   onSelectPage: (page: PageNode) => void;
   allPages: PlanePage[];
-  onRefresh: () => void;
+  onRefresh: (selectId?: string) => void;
   depth?: number;
 }
 
@@ -204,10 +204,10 @@ function PageNodeComponent({
           allPages={allPages}
           defaultParentId={page.id}
           onClose={() => setShowCreate(false)}
-          onCreated={() => {
+          onCreated={(id) => {
             setShowCreate(false);
             setExpanded(true);
-            onRefresh();
+            onRefresh(id);
           }}
         />
       )}
@@ -220,7 +220,7 @@ interface PageTreeProps {
   selectedPageId: string | null;
   onSelectPage: (page: PageNode) => void;
   allPages: PlanePage[];
-  onRefresh: () => void;
+  onRefresh: (selectId?: string) => void;
 }
 
 export function PageTree({ pages, selectedPageId, onSelectPage, allPages, onRefresh }: PageTreeProps) {

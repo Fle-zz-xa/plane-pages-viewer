@@ -119,7 +119,9 @@ function SubtaskRow({ issue, states, members, projectId, onUpdated, onDeleted }:
       </span>
       {assignee && <Avatar user={assignee.member} size="xs" />}
       <button
-        onClick={() => deleteIssue(planeBaseUrl, workspaceSlug, apiKey, projectId, issue.id).then(() => onDeleted(issue.id))}
+        onClick={() => deleteIssue(planeBaseUrl, workspaceSlug, apiKey, projectId, issue.id)
+          .then(() => onDeleted(issue.id))
+          .catch(() => alert('Verwijderen mislukt'))}
         className="opacity-0 group-hover:opacity-100 p-0.5 text-gray-400 hover:text-red-500 transition-all"
       >
         <Trash2 className="w-3 h-3" />
@@ -260,7 +262,8 @@ function TaskCard({ issue, allIssues, states, members, projectId, onUpdated, onD
             e.stopPropagation();
             if (confirm(`"${issue.name}" verwijderen?`)) {
               deleteIssue(planeBaseUrl, workspaceSlug, apiKey, projectId, issue.id)
-                .then(() => onDeleted(issue.id));
+                .then(() => onDeleted(issue.id))
+                .catch(() => alert('Verwijderen mislukt'));
             }
           }}
           className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 transition-all shrink-0"

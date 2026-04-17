@@ -13,7 +13,7 @@ import { WikiEditor, WikiEditorRef } from '@/components/WikiEditor';
 interface Props {
   page: PageNode | null;
   allPages: PlanePage[];
-  onPageUpdated: () => void;
+  onPageUpdated: (selectId?: string) => void;
   onPageDeleted: () => void;
 }
 
@@ -316,9 +316,9 @@ export function PageViewer({ page, allPages, onPageUpdated, onPageDeleted }: Pro
           allPages={allPages}
           defaultParentId={page.id}
           onClose={() => setShowCreate(false)}
-          onCreated={() => {
+          onCreated={(id) => {
             setShowCreate(false);
-            onPageUpdated();
+            onPageUpdated(id);
           }}
         />
       )}

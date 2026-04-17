@@ -7,6 +7,15 @@ import { WikiSidebar } from '@/components/WikiSidebar';
 import { PageViewer } from '@/components/PageViewer';
 import { SettingsModal } from '@/components/SettingsModal';
 
+function findNode(nodes: PageNode[], id: string): PageNode | null {
+  for (const n of nodes) {
+    if (n.id === id) return n;
+    const found = findNode(n.children, id);
+    if (found) return found;
+  }
+  return null;
+}
+
 export default function WikiPage() {
   const [pages, setPages] = useState<PageNode[]>([]);
   const [allPages, setAllPages] = useState<PlanePage[]>([]);
@@ -28,16 +37,11 @@ export default function WikiPage() {
     try {
       const flat = await fetchPages(settings.planeBaseUrl, settings.workspaceSlug, settings.apiKey);
       setAllPages(flat);
-      setPages(buildTree(flat));
+      const tree = buildTree(flat);
+      setPages(tree);
 
-      // Keep selected page in sync after refresh
-      setSelectedPage(prev => {
-        if (!prev) return null;
-        const updated = flat.find(p => p.id === prev.id);
-        if (!updated) return null;
-        // Rebuild node with fresh children from new tree
-        return prev;
-      });
+      // Re-sync selected page so it gets fresh children/content
+      setSelectedPage(prev => prev ? (findNode(tree, prev.id) ?? null) : null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Laden mislukt');
     } finally {
@@ -53,7 +57,7 @@ export default function WikiPage() {
     setSelectedPage(page);
   };
 
-  const handlePageUpdated = useCallback(async () => {
+  const handlePageUpdated = useCallback(async (selectId?: string) => {
     const settings = getSettings();
     if (!isConfigured(settings)) return;
     try {
@@ -61,24 +65,14 @@ export default function WikiPage() {
       setAllPages(flat);
       const tree = buildTree(flat);
       setPages(tree);
-
-      // Update selected page with fresh data from new tree
-      if (selectedPage) {
-        const findNode = (nodes: PageNode[], id: string): PageNode | null => {
-          for (const n of nodes) {
-            if (n.id === id) return n;
-            const found = findNode(n.children, id);
-            if (found) return found;
-          }
-          return null;
-        };
-        const refreshed = findNode(tree, selectedPage.id);
-        if (refreshed) setSelectedPage(refreshed);
-      }
+      setSelectedPage(prev => {
+        if (selectId) return findNode(tree, selectId) ?? prev;
+        return prev ? findNode(tree, prev.id) : null;
+      });
     } catch {
-      // ignore — tree stays stale, user can manually refresh
+      // tree stays stale on network failure
     }
-  }, [selectedPage]);
+  }, []);
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
