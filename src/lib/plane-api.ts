@@ -1,6 +1,3 @@
-// Plane API Client
-// Base URL: https://plane.rivetta.eu/api/
-
 export interface PlanePage {
   id: string;
   name: string;
@@ -16,140 +13,108 @@ export interface PageNode extends PlanePage {
   children: PageNode[];
 }
 
-const PLANE_BASE_URL = 'https://plane.rivetta.eu/api';
-const WORKSPACE_SLUG = 'rivetta'; // TODO: get from env
-const PLANE_APP_URL = 'https://plane.rivetta.eu'; // For cookie sharing
-
-// CSRF Token management
-let csrfToken: string | null = null;
-
-export async function getCsrfToken(): Promise<string> {
-  if (csrfToken) return csrfToken;
-
-  const response = await fetch(`${PLANE_BASE_URL}/auth/get-csrf-token/`, {
-    method: 'GET',
-    credentials: 'include',
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to get CSRF token: ${response.status}`);
-  }
-
-  const data = await response.json();
-  csrfToken = data.csrf_token || data.token || null;
-  if (!csrfToken) {
-    throw new Error('CSRF token not found in response');
-  }
-  return csrfToken;
-}
-
-// Get auth headers for API requests
-// IMPORTANT: Must be called from a page that shares cookies with plane.rivetta.eu
-export async function getAuthHeaders(): Promise<HeadersInit> {
-  const token = await getCsrfToken();
+function makeHeaders(apiKey: string): HeadersInit {
   return {
     'Content-Type': 'application/json',
-    'X-CSRFToken': token,
+    'X-Api-Key': apiKey,
   };
 }
 
-// Helper to check if user is authenticated
-export async function checkAuth(): Promise<boolean> {
-  try {
-    const headers = await getAuthHeaders();
-    const response = await fetch(`${PLANE_BASE_URL}/workspaces/`, {
-      method: 'GET',
-      headers,
-      credentials: 'include',
-    });
-    return response.ok;
-  } catch {
-    return false;
-  }
-}
-
-// Fetch all pages from workspace
-export async function fetchPages(workspaceSlug: string = WORKSPACE_SLUG): Promise<PlanePage[]> {
-  const headers = await getAuthHeaders();
-  
-  const response = await fetch(`${PLANE_BASE_URL}/workspaces/${workspaceSlug}/pages/`, {
-    method: 'GET',
-    headers,
-    credentials: 'include',
+export async function fetchPages(
+  baseUrl: string,
+  workspaceSlug: string,
+  apiKey: string
+): Promise<PlanePage[]> {
+  const res = await fetch(`${baseUrl}/api/workspaces/${workspaceSlug}/pages/`, {
+    headers: makeHeaders(apiKey),
   });
-
-  if (!response.ok) {
-    if (response.status === 401) {
-      csrfToken = null; // Reset token on auth error
-      throw new Error('Authentication failed. Please log in to Plane.');
-    }
-    throw new Error(`Failed to fetch pages: ${response.status} ${response.statusText}`);
+  if (!res.ok) {
+    if (res.status === 401) throw new Error('Ongeldige API key. Controleer je instellingen.');
+    throw new Error(`Kan pages niet ophalen: ${res.status} ${res.statusText}`);
   }
-
-  const data = await response.json();
-  return data.results || data; // Handle different response formats
+  const data = await res.json();
+  return data.results ?? data;
 }
 
-// Fetch single page with full content
-export async function fetchPage(workspaceSlug: string, pageId: string): Promise<PlanePage> {
-  const headers = await getAuthHeaders();
-  
-  const response = await fetch(`${PLANE_BASE_URL}/workspaces/${workspaceSlug}/pages/${pageId}/`, {
-    method: 'GET',
-    headers,
-    credentials: 'include',
+export async function fetchPage(
+  baseUrl: string,
+  workspaceSlug: string,
+  apiKey: string,
+  pageId: string
+): Promise<PlanePage> {
+  const res = await fetch(`${baseUrl}/api/workspaces/${workspaceSlug}/pages/${pageId}/`, {
+    headers: makeHeaders(apiKey),
   });
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch page: ${response.status}`);
-  }
-
-  return await response.json();
+  if (!res.ok) throw new Error(`Kan page niet ophalen: ${res.status}`);
+  return res.json();
 }
 
-// Build tree structure from flat pages array
+export async function createPage(
+  baseUrl: string,
+  workspaceSlug: string,
+  apiKey: string,
+  page: Partial<PlanePage>
+): Promise<PlanePage> {
+  const res = await fetch(`${baseUrl}/api/workspaces/${workspaceSlug}/pages/`, {
+    method: 'POST',
+    headers: makeHeaders(apiKey),
+    body: JSON.stringify(page),
+  });
+  if (!res.ok) throw new Error(`Kan page niet aanmaken: ${res.status}`);
+  return res.json();
+}
+
+export async function updatePage(
+  baseUrl: string,
+  workspaceSlug: string,
+  apiKey: string,
+  pageId: string,
+  updates: Partial<PlanePage>
+): Promise<PlanePage> {
+  const res = await fetch(`${baseUrl}/api/workspaces/${workspaceSlug}/pages/${pageId}/`, {
+    method: 'PATCH',
+    headers: makeHeaders(apiKey),
+    body: JSON.stringify(updates),
+  });
+  if (!res.ok) throw new Error(`Kan page niet bijwerken: ${res.status}`);
+  return res.json();
+}
+
+export async function deletePage(
+  baseUrl: string,
+  workspaceSlug: string,
+  apiKey: string,
+  pageId: string
+): Promise<void> {
+  const res = await fetch(`${baseUrl}/api/workspaces/${workspaceSlug}/pages/${pageId}/`, {
+    method: 'DELETE',
+    headers: makeHeaders(apiKey),
+  });
+  if (!res.ok) throw new Error(`Kan page niet verwijderen: ${res.status}`);
+}
+
 export function buildTree(pages: PlanePage[]): PageNode[] {
-  const tree: PageNode[] = [];
   const lookup = new Map<string, PageNode>();
+  pages.forEach(p => lookup.set(p.id, { ...p, children: [] }));
 
-  // First pass: create nodes with empty children arrays
-  pages.forEach(page => {
-    lookup.set(page.id, { ...page, children: [] });
-  });
-
-  // Second pass: build hierarchy
-  pages.forEach(page => {
-    const node = lookup.get(page.id)!;
-    if (page.parent_id && lookup.has(page.parent_id)) {
-      lookup.get(page.parent_id)!.children.push(node);
+  const tree: PageNode[] = [];
+  pages.forEach(p => {
+    const node = lookup.get(p.id)!;
+    if (p.parent_id && lookup.has(p.parent_id)) {
+      lookup.get(p.parent_id)!.children.push(node);
     } else {
       tree.push(node);
     }
   });
 
-  // Sort by sort_order
-  tree.sort((a, b) => a.sort_order - b.sort_order);
-  
+  const sort = (nodes: PageNode[]) => {
+    nodes.sort((a, b) => a.sort_order - b.sort_order);
+    nodes.forEach(n => sort(n.children));
+  };
+  sort(tree);
   return tree;
 }
 
-// Create new page
-export async function createPage(
-  workspaceSlug: string,
-  page: Partial<PlanePage>
-): Promise<PlanePage> {
-  const headers = await getAuthHeaders();
-  
-  const response = await fetch(`${PLANE_BASE_URL}/workspaces/${workspaceSlug}/pages/`, {
-    method: 'POST',
-    headers,
-    credentials: 'include',
-    body: JSON.stringify(page),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to create page: ${response.status}`);
-  }
-
-  return await response.json();
+export function flattenTree(nodes: PageNode[]): PageNode[] {
+  return nodes.flatMap(n => [n, ...flattenTree(n.children)]);
 }
