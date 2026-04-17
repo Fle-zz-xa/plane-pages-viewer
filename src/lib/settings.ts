@@ -4,10 +4,16 @@ export interface WikiSettings {
   planeBaseUrl: string;
 }
 
+function defaultBaseUrl(): string {
+  if (typeof window === 'undefined') return 'https://plane.rivetta.eu';
+  // On localhost use direct URL; on any deployed domain use the built-in proxy
+  return window.location.hostname === 'localhost' ? 'https://plane.rivetta.eu' : '/plane-api';
+}
+
 const DEFAULTS: WikiSettings = {
   apiKey: '',
   workspaceSlug: 'rivetta',
-  planeBaseUrl: 'https://plane.rivetta.eu',
+  planeBaseUrl: defaultBaseUrl(),
 };
 
 const STORAGE_KEY = 'rivetta-wiki-settings';

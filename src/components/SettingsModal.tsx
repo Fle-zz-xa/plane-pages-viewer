@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Settings, X, Key, Globe, Building2, Eye, EyeOff } from 'lucide-react';
+import { Settings, X, Key, Globe, Building2, Eye, EyeOff, CheckCircle2, Zap } from 'lucide-react';
 import { getSettings, saveSettings, WikiSettings } from '@/lib/settings';
 
 interface Props {
@@ -48,13 +48,36 @@ export function SettingsModal({ onClose, onSaved }: Props) {
               <Globe className="w-4 h-4 text-gray-400" />
               Plane URL
             </label>
-            <input
-              type="url"
-              value={form.planeBaseUrl}
-              onChange={e => setForm(f => ({ ...f, planeBaseUrl: e.target.value }))}
-              placeholder="https://plane.rivetta.eu"
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
-            />
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={form.planeBaseUrl}
+                onChange={e => setForm(f => ({ ...f, planeBaseUrl: e.target.value }))}
+                placeholder="https://plane.rivetta.eu"
+                className="flex-1 px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition font-mono"
+              />
+              <button
+                type="button"
+                onClick={() => setForm(f => ({ ...f, planeBaseUrl: '/plane-api' }))}
+                title="Gebruik ingebouwde proxy (aanbevolen voor live)"
+                className={`px-2.5 py-2 rounded-lg border text-xs font-medium transition-colors shrink-0 ${
+                  form.planeBaseUrl === '/plane-api'
+                    ? 'bg-green-50 border-green-300 text-green-700'
+                    : 'border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-600'
+                }`}
+              >
+                {form.planeBaseUrl === '/plane-api'
+                  ? <CheckCircle2 className="w-4 h-4" />
+                  : <Zap className="w-4 h-4" />
+                }
+              </button>
+            </div>
+            <p className="text-xs text-gray-400">
+              {form.planeBaseUrl === '/plane-api'
+                ? '⚡ Proxy actief — werkt op de live Cloudflare deploy zonder CORS-configuratie'
+                : 'Gebruik ⚡ voor de live deploy, of vul de directe URL in voor lokale ontwikkeling'
+              }
+            </p>
           </div>
 
           {/* Workspace slug */}
@@ -103,10 +126,10 @@ export function SettingsModal({ onClose, onSaved }: Props) {
           </div>
 
           {/* Info box */}
-          <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
-            <p className="text-xs text-amber-700">
-              <strong>Let op:</strong> je Plane instance moet CORS toestaan voor dit domein.
-              Zonder CORS werken API calls niet in de browser.
+          <div className="bg-indigo-50 border border-indigo-100 rounded-lg px-4 py-3">
+            <p className="text-xs text-indigo-700">
+              <strong>Live deploy:</strong> gebruik <code className="bg-indigo-100 px-1 rounded font-mono">/plane-api</code> als URL — de ingebouwde Cloudflare proxy regelt de verbinding met plane.rivetta.eu.
+              <br /><strong>Lokaal:</strong> vul de directe URL in en zorg voor CORS of gebruik <code className="bg-indigo-100 px-1 rounded font-mono">wrangler pages dev</code>.
             </p>
           </div>
         </div>

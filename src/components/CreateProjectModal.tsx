@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { X, Package } from 'lucide-react';
-import { createProject, generateIdentifier } from '@/lib/projects-api';
+import { createProject, createProjectPage, generateIdentifier } from '@/lib/projects-api';
 import { encodePhase, ProjectPhase, PHASES } from '@/lib/phase';
 import { getSettings } from '@/lib/settings';
 
@@ -16,8 +16,13 @@ export function CreateProjectModal({ onClose, onCreated }: Props) {
   const [identifier, setIdentifier] = useState('');
   const [phase, setPhase] = useState<ProjectPhase>('vault');
   const [description, setDescription] = useState('');
+  const [useTemplate, setUseTemplate] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const templatePages = phase === 'vault'
+    ? ['Brief']
+    : ['Brief', 'Design', 'Materialen', 'Technisch', 'Productie', 'Marketing & Sales'];
 
   const handleNameChange = (value: string) => {
     setName(value);
@@ -32,12 +37,27 @@ export function CreateProjectModal({ onClose, onCreated }: Props) {
     setError(null);
     try {
       const { apiKey, workspaceSlug, planeBaseUrl } = getSettings();
-      await createProject(planeBaseUrl, workspaceSlug, apiKey, {
+      const project = await createProject(planeBaseUrl, workspaceSlug, apiKey, {
         name: name.trim(),
         identifier: identifier.trim().toUpperCase().slice(0, 12),
         description: encodePhase(phase, description),
         network: 0,
       });
+
+      if (useTemplate) {
+        await Promise.all(
+          templatePages.map((pageName, idx) =>
+            createProjectPage(planeBaseUrl, workspaceSlug, apiKey, project.id, {
+              name: pageName,
+              parent_id: null,
+              is_global: false,
+              description_html: '<p></p>',
+              sort_order: (idx + 1) * 10000,
+            })
+          )
+        );
+      }
+
       onCreated();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Aanmaken mislukt');
@@ -113,6 +133,26 @@ export function CreateProjectModal({ onClose, onCreated }: Props) {
                 </label>
               ))}
             </div>
+          </div>
+
+          {/* Template */}
+          <div className="space-y-2">
+            <label className="flex items-center gap-3 cursor-pointer group">
+              <input
+                type="checkbox"
+                checked={useTemplate}
+                onChange={e => setUseTemplate(e.target.checked)}
+                className="accent-indigo-600 w-4 h-4"
+              />
+              <span className="text-sm font-medium text-gray-700">Standaard pagina's aanmaken</span>
+            </label>
+            {useTemplate && (
+              <div className="ml-7 flex flex-wrap gap-1.5">
+                {templatePages.map(p => (
+                  <span key={p} className="px-2 py-0.5 bg-indigo-50 text-indigo-600 text-xs rounded-md font-medium">{p}</span>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Description */}
