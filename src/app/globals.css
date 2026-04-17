@@ -24,3 +24,164 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* ── Wiki Editor ──────────────────────────────────────── */
+
+.wiki-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f9fafb;
+  border-radius: 12px 12px 0 0;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.wiki-prose {
+  padding: 32px 0;
+  min-height: 300px;
+}
+
+.wiki-prose .ProseMirror {
+  outline: none;
+  font-size: 15px;
+  line-height: 1.75;
+  color: #1f2937;
+}
+
+.wiki-prose .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: #9ca3af;
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+/* Headings */
+.wiki-prose .ProseMirror h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 1.5rem 0 0.75rem;
+  color: #111827;
+}
+.wiki-prose .ProseMirror h2 {
+  font-size: 1.4rem;
+  font-weight: 600;
+  line-height: 1.35;
+  margin: 1.25rem 0 0.5rem;
+  color: #1f2937;
+}
+.wiki-prose .ProseMirror h3 {
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin: 1rem 0 0.4rem;
+  color: #374151;
+}
+
+/* Paragraph spacing */
+.wiki-prose .ProseMirror p {
+  margin: 0.5rem 0;
+}
+
+/* Lists */
+.wiki-prose .ProseMirror ul,
+.wiki-prose .ProseMirror ol {
+  padding-left: 1.5rem;
+  margin: 0.5rem 0;
+}
+.wiki-prose .ProseMirror ul { list-style-type: disc; }
+.wiki-prose .ProseMirror ol { list-style-type: decimal; }
+.wiki-prose .ProseMirror li { margin: 0.25rem 0; }
+
+/* Task list */
+.wiki-prose .ProseMirror ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0;
+}
+.wiki-prose .ProseMirror ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.wiki-prose .ProseMirror ul[data-type="taskList"] li > label {
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+.wiki-prose .ProseMirror ul[data-type="taskList"] li > div {
+  flex: 1;
+}
+.wiki-prose .ProseMirror ul[data-type="taskList"] li[data-checked="true"] > div {
+  text-decoration: line-through;
+  color: #9ca3af;
+}
+
+/* Blockquote */
+.wiki-prose .ProseMirror blockquote {
+  border-left: 3px solid #6366f1;
+  padding-left: 1rem;
+  margin: 1rem 0;
+  color: #6b7280;
+  font-style: italic;
+}
+
+/* Code */
+.wiki-prose .ProseMirror code {
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 0.875em;
+  font-family: ui-monospace, monospace;
+}
+.wiki-prose .ProseMirror pre {
+  background: #1f2937;
+  border-radius: 8px;
+  padding: 16px;
+  margin: 1rem 0;
+  overflow-x: auto;
+}
+.wiki-prose .ProseMirror pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #e5e7eb;
+  font-size: 0.875rem;
+}
+
+/* Horizontal rule */
+.wiki-prose .ProseMirror hr {
+  border: none;
+  border-top: 2px solid #e5e7eb;
+  margin: 1.5rem 0;
+}
+
+/* Links */
+.wiki-prose .ProseMirror a,
+.wiki-link {
+  color: #4f46e5;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.wiki-prose .ProseMirror a:hover { color: #4338ca; }
+
+/* Highlight */
+.wiki-prose .ProseMirror mark {
+  background: #fef08a;
+  border-radius: 2px;
+  padding: 1px 2px;
+}
+
+/* Selection */
+.wiki-prose .ProseMirror ::selection {
+  background: #e0e7ff;
+}
+
+/* View mode — no cursor on non-editable */
+.wiki-prose .ProseMirror:not([contenteditable="true"]) {
+  cursor: default;
+}

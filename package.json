@@ -9,6 +9,16 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@tiptap/extension-highlight": "^2.10.0",
+    "@tiptap/extension-link": "^2.10.0",
+    "@tiptap/extension-placeholder": "^2.10.0",
+    "@tiptap/extension-task-item": "^2.10.0",
+    "@tiptap/extension-task-list": "^2.10.0",
+    "@tiptap/extension-text-align": "^2.10.0",
+    "@tiptap/extension-underline": "^2.10.0",
+    "@tiptap/pm": "^2.10.0",
+    "@tiptap/react": "^2.10.0",
+    "@tiptap/starter-kit": "^2.10.0",
     "axios": "^1.15.0",
     "lucide-react": "^0.511.0",
     "next": "16.2.3",
