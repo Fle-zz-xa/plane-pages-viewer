@@ -3,13 +3,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   ArrowLeft, ChevronRight, Plus, Edit3, Save, X, Trash2,
-  Loader2, FileText, MoreHorizontal, AlertCircle, Archive,
+  Loader2, FileText, MoreHorizontal, AlertCircle, Archive, CheckCircle2,
 } from 'lucide-react';
 import { PlaneProject, updateProject, deleteProject, fetchProjectPages, createProjectPage, updateProjectPage, deleteProjectPage } from '@/lib/projects-api';
 import { PlanePage } from '@/lib/plane-api';
 import { parsePhase, getNextPhase, encodePhase, stripPhaseMarker, PHASES, PHASE_ORDER, ProjectPhase } from '@/lib/phase';
 import { getSettings } from '@/lib/settings';
 import { WikiEditor, WikiEditorRef } from '@/components/WikiEditor';
+import { TaskBoard } from '@/components/TaskBoard';
 
 interface Props {
   project: PlaneProject;
@@ -45,6 +46,7 @@ function PhaseTimeline({ current }: { current: ProjectPhase }) {
 }
 
 export function ProjectDetail({ project, onBack, onProjectUpdated, onProjectDeleted }: Props) {
+  const [activeTab, setActiveTab] = useState<'tasks' | 'pages'>('tasks');
   const [pages, setPages] = useState<PlanePage[]>([]);
   const [selectedPage, setSelectedPage] = useState<PlanePage | null>(null);
   const [loadingPages, setLoadingPages] = useState(true);
@@ -264,94 +266,110 @@ export function ProjectDetail({ project, onBack, onProjectUpdated, onProjectDele
           </div>
         </div>
 
-        {/* Body — sections sidebar + content */}
+        {/* Body — tabs sidebar + content */}
         <div className="flex-1 flex min-h-0">
-          {/* Sections sidebar */}
+          {/* Left sidebar */}
           <div className="w-52 shrink-0 border-r border-gray-100 flex flex-col">
-            <div className="px-3 pt-4 pb-2">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest px-2">Secties</p>
+            {/* Tab switcher */}
+            <div className="px-3 pt-3 pb-2 space-y-0.5">
+              <button
+                onClick={() => setActiveTab('tasks')}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-colors ${
+                  activeTab === 'tasks' ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                Taken
+              </button>
+              <button
+                onClick={() => setActiveTab('pages')}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-colors ${
+                  activeTab === 'pages' ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                <FileText className="w-4 h-4 shrink-0" />
+                Secties
+              </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-2">
-              {loadingPages && (
-                <div className="flex justify-center py-6">
-                  <Loader2 className="w-4 h-4 animate-spin text-gray-300" />
-                </div>
-              )}
+            <div className="px-3 pb-2"><div className="h-px bg-gray-100" /></div>
 
-              {!loadingPages && pages.map(page => (
-                <div
-                  key={page.id}
-                  className={`group flex items-center gap-1.5 px-2 py-1.5 rounded-lg cursor-pointer transition-colors ${
-                    selectedPage?.id === page.id
-                      ? 'bg-indigo-50 text-indigo-800'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                  onClick={() => { setSelectedPage(page); setEditing(false); }}
-                >
-                  <FileText className="w-3.5 h-3.5 shrink-0 opacity-60" />
-                  <span className="flex-1 text-sm truncate">{page.name}</span>
-                  <button
-                    onClick={e => { e.stopPropagation(); handleDeleteSection(page); }}
-                    className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-red-100 text-gray-400 hover:text-red-600 transition-all"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
-                </div>
-              ))}
-
-              {!loadingPages && pages.length === 0 && (
-                <p className="text-xs text-gray-400 px-2 py-2">Nog geen secties</p>
-              )}
-            </div>
-
-            {/* New section */}
-            <div className="p-2 border-t border-gray-100">
-              {showNewSection ? (
-                <div className="space-y-1.5">
-                  <input
-                    autoFocus
-                    type="text"
-                    value={newSectionName}
-                    onChange={e => setNewSectionName(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') handleCreateSection();
-                      if (e.key === 'Escape') { setShowNewSection(false); setNewSectionName(''); }
-                    }}
-                    placeholder="Sectienaam..."
-                    className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                  />
-                  <div className="flex gap-1">
-                    <button
-                      onClick={handleCreateSection}
-                      disabled={!newSectionName.trim() || creatingSection}
-                      className="flex-1 py-1 text-xs bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50"
+            {/* Sections list (only when pages tab active) */}
+            {activeTab === 'pages' && (
+              <>
+                <div className="flex-1 overflow-y-auto px-2">
+                  {loadingPages && (
+                    <div className="flex justify-center py-6">
+                      <Loader2 className="w-4 h-4 animate-spin text-gray-300" />
+                    </div>
+                  )}
+                  {!loadingPages && pages.map(page => (
+                    <div
+                      key={page.id}
+                      className={`group flex items-center gap-1.5 px-2 py-1.5 rounded-lg cursor-pointer transition-colors ${
+                        selectedPage?.id === page.id ? 'bg-indigo-50 text-indigo-800' : 'text-gray-600 hover:bg-gray-50'
+                      }`}
+                      onClick={() => { setSelectedPage(page); setEditing(false); }}
                     >
-                      {creatingSection ? '...' : 'Toevoegen'}
-                    </button>
-                    <button
-                      onClick={() => { setShowNewSection(false); setNewSectionName(''); }}
-                      className="px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 rounded-md"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
+                      <FileText className="w-3.5 h-3.5 shrink-0 opacity-60" />
+                      <span className="flex-1 text-sm truncate">{page.name}</span>
+                      <button
+                        onClick={e => { e.stopPropagation(); handleDeleteSection(page); }}
+                        className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-red-100 text-gray-400 hover:text-red-600 transition-all"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                  {!loadingPages && pages.length === 0 && (
+                    <p className="text-xs text-gray-400 px-2 py-2">Nog geen secties</p>
+                  )}
                 </div>
-              ) : (
-                <button
-                  onClick={() => setShowNewSection(true)}
-                  className="w-full flex items-center gap-1.5 px-2 py-1.5 text-xs text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Sectie toevoegen
-                </button>
-              )}
-            </div>
+                <div className="p-2 border-t border-gray-100">
+                  {showNewSection ? (
+                    <div className="space-y-1.5">
+                      <input
+                        autoFocus
+                        type="text"
+                        value={newSectionName}
+                        onChange={e => setNewSectionName(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') handleCreateSection();
+                          if (e.key === 'Escape') { setShowNewSection(false); setNewSectionName(''); }
+                        }}
+                        placeholder="Sectienaam..."
+                        className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                      />
+                      <div className="flex gap-1">
+                        <button onClick={handleCreateSection} disabled={!newSectionName.trim() || creatingSection} className="flex-1 py-1 text-xs bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50">
+                          {creatingSection ? '...' : 'Toevoegen'}
+                        </button>
+                        <button onClick={() => { setShowNewSection(false); setNewSectionName(''); }} className="px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 rounded-md">
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button onClick={() => setShowNewSection(true)} className="w-full flex items-center gap-1.5 px-2 py-1.5 text-xs text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
+                      <Plus className="w-3.5 h-3.5" />
+                      Sectie toevoegen
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* Tasks tab — no extra sidebar content needed */}
+            {activeTab === 'tasks' && <div className="flex-1" />}
           </div>
 
           {/* Content area */}
           <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-            {selectedPage ? (
+            {/* Tasks view */}
+            {activeTab === 'tasks' && <TaskBoard project={project} />}
+
+            {/* Pages view */}
+            {activeTab === 'pages' && selectedPage ? (
               <>
                 {/* Section toolbar */}
                 <div className="flex items-center justify-between px-6 py-2.5 border-b border-gray-100 shrink-0">
@@ -370,11 +388,7 @@ export function ProjectDetail({ project, onBack, onProjectUpdated, onProjectDele
                         <button onClick={cancelEdit} className="flex items-center gap-1 px-2.5 py-1 text-xs text-gray-500 hover:bg-gray-100 rounded-lg">
                           <X className="w-3.5 h-3.5" /> Annuleren
                         </button>
-                        <button
-                          onClick={handleSave}
-                          disabled={saving}
-                          className="flex items-center gap-1 px-3 py-1 text-xs bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-60"
-                        >
+                        <button onClick={handleSave} disabled={saving} className="flex items-center gap-1 px-3 py-1 text-xs bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-60">
                           {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                           {saving ? 'Opslaan...' : 'Opslaan'}
                         </button>
@@ -398,29 +412,17 @@ export function ProjectDetail({ project, onBack, onProjectUpdated, onProjectDele
                     )}
                     {editing ? (
                       <div className="mt-4 border border-gray-200 rounded-xl overflow-hidden">
-                        <WikiEditor
-                          ref={editorRef}
-                          key={selectedPage.id}
-                          content={selectedPage.description_html ?? ''}
-                          editable
-                          placeholder="Begin met schrijven..."
-                        />
+                        <WikiEditor ref={editorRef} key={selectedPage.id} content={selectedPage.description_html ?? ''} editable placeholder="Begin met schrijven..." />
                       </div>
                     ) : (
                       <div className="mt-4">
                         {selectedPage.description_html?.replace(/<[^>]*>/g, '').trim() ? (
-                          <WikiEditor
-                            key={selectedPage.id}
-                            content={selectedPage.description_html ?? ''}
-                            editable={false}
-                          />
+                          <WikiEditor key={selectedPage.id} content={selectedPage.description_html ?? ''} editable={false} />
                         ) : (
                           <div className="text-center py-20">
                             <FileText className="w-10 h-10 mx-auto mb-3 text-gray-200" strokeWidth={1} />
                             <p className="text-sm text-gray-400">Nog geen inhoud</p>
-                            <button onClick={startEdit} className="mt-3 text-sm text-indigo-500 hover:text-indigo-700 underline">
-                              Klik om te beginnen
-                            </button>
+                            <button onClick={startEdit} className="mt-3 text-sm text-indigo-500 hover:text-indigo-700 underline">Klik om te beginnen</button>
                           </div>
                         )}
                       </div>

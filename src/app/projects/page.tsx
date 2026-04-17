@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { BookOpen, Settings } from 'lucide-react';
+import { BookOpen, Settings, CheckSquare } from 'lucide-react';
 import { fetchProjects, PlaneProject } from '@/lib/projects-api';
 import { getSettings, isConfigured } from '@/lib/settings';
 import { ProjectsList } from '@/components/ProjectsList';
@@ -59,6 +59,14 @@ export default function ProjectsPage() {
         <span className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-900">
           Projecten
         </span>
+        <span className="text-gray-200">/</span>
+        <Link
+          href="/my-tasks"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+        >
+          <CheckSquare className="w-4 h-4" />
+          Mijn taken
+        </Link>
         <div className="ml-auto">
           <button
             onClick={() => setShowSettings(true)}
