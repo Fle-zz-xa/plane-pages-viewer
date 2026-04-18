@@ -1,0 +1,956 @@
+From 03e7239ff995fb4b5383ff1368ff08c4c8f983d0 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 18 Apr 2026 07:18:31 +0000
+Subject: [PATCH] feat: Rivetta fase-tracking, handoff, templates &
+ vault-weergave
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Integreert alle Rivetta product-lifecycle features direct in Plane v1.3.0.
+Fase wordt opgeslagen als [_riv:phase]\n prefix in het description-veld
+(geen backend-wijzigingen nodig).
+
+Nieuwe bestanden:
+- core/helpers/rivetta/phase.ts — fase-logica & config
+- core/components/rivetta/phase-badge.tsx — badge + voortgangsbalk
+- core/components/rivetta/phase-controls.tsx — fase-overgang UI + archiveren
+- core/components/rivetta/handoff-modal.tsx — Dev→Marketing handover checklist
+- app/(all)/[workspaceSlug]/(projects)/vault/page.tsx — Vault overzichtspagina
+
+Gewijzigde bestanden:
+- core/components/project/card.tsx
+- ce/components/projects/create/root.tsx
+- core/components/project/form.tsx
+- app/routes/core.ts
+- app/(all)/[workspaceSlug]/(projects)/sidebar.tsx
+- styles/globals.css
+
+https://claude.ai/code/session_01F5cb5GugZVUfYFuetxJNHt
+---
+ .../[workspaceSlug]/(projects)/sidebar.tsx    |  25 +++
+ .../[workspaceSlug]/(projects)/vault/page.tsx | 144 +++++++++++++++++
+ apps/web/app/routes/core.ts                   |   3 +
+ .../ce/components/projects/create/root.tsx    |  71 +++++++++
+ apps/web/core/components/project/card.tsx     |  11 +-
+ apps/web/core/components/project/form.tsx     |   7 +
+ .../core/components/rivetta/handoff-modal.tsx | 148 ++++++++++++++++++
+ .../core/components/rivetta/phase-badge.tsx   |  47 ++++++
+ .../components/rivetta/phase-controls.tsx     | 141 +++++++++++++++++
+ apps/web/core/helpers/rivetta/phase.ts        | 125 +++++++++++++++
+ apps/web/styles/globals.css                   |  13 ++
+ 11 files changed, 732 insertions(+), 3 deletions(-)
+ create mode 100644 apps/web/app/(all)/[workspaceSlug]/(projects)/vault/page.tsx
+ create mode 100644 apps/web/core/components/rivetta/handoff-modal.tsx
+ create mode 100644 apps/web/core/components/rivetta/phase-badge.tsx
+ create mode 100644 apps/web/core/components/rivetta/phase-controls.tsx
+ create mode 100644 apps/web/core/helpers/rivetta/phase.ts
+
+diff --git a/apps/web/app/(all)/[workspaceSlug]/(projects)/sidebar.tsx b/apps/web/app/(all)/[workspaceSlug]/(projects)/sidebar.tsx
+index c529c4e..732f85e 100644
+--- a/apps/web/app/(all)/[workspaceSlug]/(projects)/sidebar.tsx
++++ b/apps/web/app/(all)/[workspaceSlug]/(projects)/sidebar.tsx
+@@ -6,8 +6,11 @@
+ 
+ import { isEmpty } from "lodash-es";
+ import { observer } from "mobx-react";
++import { useParams, useNavigate } from "react-router";
++import { Package } from "lucide-react";
+ // plane helpers
+ import { EUserPermissions, EUserPermissionsLevel } from "@plane/constants";
++import { cn } from "@plane/utils";
+ // components
+ import { SidebarWrapper } from "@/components/sidebar/sidebar-wrapper";
+ import { SidebarFavoritesMenu } from "@/components/workspace/sidebar/favorites/favorites-menu";
+@@ -20,10 +23,19 @@ import { useUserPermissions } from "@/hooks/store/user";
+ // plane web components
+ import { SidebarTeamsList } from "@/plane-web/components/workspace/sidebar/teams-sidebar-list";
+ 
++function useVaultNavItem() {
++  const { workspaceSlug } = useParams<{ workspaceSlug: string }>();
++  const navigate = useNavigate();
++  const isActive = typeof window !== "undefined" && window.location.pathname.includes("/vault");
++  const go = () => navigate(`/${workspaceSlug}/vault`);
++  return { isActive, go };
++}
++
+ export const AppSidebar = observer(function AppSidebar() {
+   // store hooks
+   const { allowPermissions } = useUserPermissions();
+   const { groupedFavorites } = useFavorite();
++  const { isActive: isVaultActive, go: goToVault } = useVaultNavItem();
+ 
+   // derived values
+   const canPerformWorkspaceMemberActions = allowPermissions(
+@@ -40,6 +52,19 @@ export const AppSidebar = observer(function AppSidebar() {
+       {canPerformWorkspaceMemberActions && !isFavoriteEmpty && <SidebarFavoritesMenu />}
+       {/* Teams List */}
+       <SidebarTeamsList />
++      {/* Rivetta Vault nav item */}
++      <button
++        onClick={goToVault}
++        className={cn(
++          "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-13 font-medium transition-colors",
++          isVaultActive
++            ? "bg-indigo-50 text-indigo-700"
++            : "text-placeholder hover:bg-layer-transparent-hover"
++        )}
++      >
++        <Package className="h-4 w-4 shrink-0" />
++        Vault
++      </button>
+       {/* Projects List */}
+       <SidebarProjectsList />
+     </SidebarWrapper>
+diff --git a/apps/web/app/(all)/[workspaceSlug]/(projects)/vault/page.tsx b/apps/web/app/(all)/[workspaceSlug]/(projects)/vault/page.tsx
+new file mode 100644
+index 0000000..3e9a965
+--- /dev/null
++++ b/apps/web/app/(all)/[workspaceSlug]/(projects)/vault/page.tsx
+@@ -0,0 +1,144 @@
++import { observer } from "mobx-react";
++import { useParams } from "next/navigation";
++import { useState } from "react";
++import { Package, ChevronRight, Loader2, Search } from "lucide-react";
++import { TOAST_TYPE, setToast } from "@plane/propel/toast";
++import { parsePhase, encodePhase, stripPhaseMarker, PHASES } from "@/helpers/rivetta/phase";
++import { useProject } from "@/hooks/store/use-project";
++import { RivettaPhaseTimeline } from "@/components/rivetta/phase-badge";
++import { renderFormattedDate } from "@plane/utils";
++
++const VaultPage = observer(function VaultPage() {
++  const { workspaceSlug } = useParams<{ workspaceSlug: string }>();
++  const [query, setQuery] = useState("");
++  const [advancing, setAdvancing] = useState<string | null>(null);
++
++  const { joinedProjectIds, getPartialProjectById, updateProject } = useProject();
++
++  const allProjects = (joinedProjectIds ?? [])
++    .map((id) => getPartialProjectById(id))
++    .filter(Boolean);
++
++  const vaultProjects = allProjects.filter(
++    (p) => parsePhase(p!.description ?? "") === "vault"
++  );
++
++  const filtered = query.trim()
++    ? vaultProjects.filter(
++        (p) =>
++          p!.name.toLowerCase().includes(query.toLowerCase()) ||
++          stripPhaseMarker(p!.description ?? "").toLowerCase().includes(query.toLowerCase())
++      )
++    : vaultProjects;
++
++  const handleStartDesign = async (projectId: string, projectName: string, description: string) => {
++    if (!workspaceSlug) return;
++    if (!confirm(`"${projectName}" starten met Sample 1?`)) return;
++    setAdvancing(projectId);
++    try {
++      const newDesc = encodePhase("design_s1", stripPhaseMarker(description));
++      await updateProject(workspaceSlug, projectId, { description: newDesc });
++      setToast({ type: TOAST_TYPE.SUCCESS, title: "Fase bijgewerkt", message: `${projectName} staat nu in Design — Sample 1` });
++    } catch {
++      setToast({ type: TOAST_TYPE.ERROR, title: "Fout", message: "Fase-overgang mislukt" });
++    } finally {
++      setAdvancing(null);
++    }
++  };
++
++  return (
++    <div className="h-full flex flex-col">
++      {/* Header */}
++      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 shrink-0">
++        <div className="flex items-center gap-3">
++          <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center">
++            <Package className="w-4 h-4 text-gray-600" />
++          </div>
++          <div>
++            <h1 className="text-lg font-semibold text-gray-900">Vault</h1>
++            <p className="text-xs text-gray-500">
++              {vaultProjects.length} idee{vaultProjects.length !== 1 ? "ën" : ""} in de wacht
++            </p>
++          </div>
++        </div>
++        <div className="relative">
++          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
++          <input
++            type="text"
++            value={query}
++            onChange={(e) => setQuery(e.target.value)}
++            placeholder="Zoeken..."
++            className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 w-48"
++          />
++        </div>
++      </div>
++
++      {/* Grid */}
++      <div className="flex-1 overflow-y-auto px-6 py-4">
++        {filtered.length === 0 ? (
++          <div className="flex flex-col items-center justify-center h-48 text-center">
++            <Package className="w-10 h-10 text-gray-300 mb-3" />
++            <p className="text-sm font-medium text-gray-500">
++              {query ? "Geen resultaten" : "Vault is leeg"}
++            </p>
++            <p className="text-xs text-gray-400 mt-1">
++              {query
++                ? "Probeer een andere zoekterm"
++                : 'Maak een nieuw project aan met startfase "Vault" om ideeën te bewaren'}
++            </p>
++          </div>
++        ) : (
++          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
++            {filtered.map((project) => {
++              if (!project) return null;
++              const cleanDesc = stripPhaseMarker(project.description ?? "");
++              return (
++                <div
++                  key={project.id}
++                  className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col gap-3 hover:border-gray-300 hover:shadow-sm transition-all"
++                >
++                  <div className="flex items-start justify-between gap-2">
++                    <div className="flex-1 min-w-0">
++                      <p className="text-sm font-semibold text-gray-900 truncate">{project.name}</p>
++                      <p className="text-xs text-gray-400 mt-0.5 font-mono">{project.identifier}</p>
++                    </div>
++                    <span className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-600">
++                      <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
++                      {PHASES.vault.shortLabel}
++                    </span>
++                  </div>
++
++                  {cleanDesc && (
++                    <p className="text-xs text-gray-500 line-clamp-2">{cleanDesc}</p>
++                  )}
++
++                  <RivettaPhaseTimeline description={project.description ?? ""} />
++
++                  <div className="flex items-center justify-between mt-auto">
++                    <span className="text-[10px] text-gray-400">
++                      {project.created_at ? renderFormattedDate(project.created_at) : "—"}
++                    </span>
++                    <button
++                      onClick={() => handleStartDesign(project.id, project.name, project.description ?? "")}
++                      disabled={advancing === project.id}
++                      className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium bg-indigo-600 text-white hover:bg-indigo-700 rounded-md transition-colors disabled:opacity-50"
++                    >
++                      {advancing === project.id ? (
++                        <Loader2 className="w-3 h-3 animate-spin" />
++                      ) : (
++                        <ChevronRight className="w-3 h-3" />
++                      )}
++                      Start Design
++                    </button>
++                  </div>
++                </div>
++              );
++            })}
++          </div>
++        )}
++      </div>
++    </div>
++  );
++});
++
++export default VaultPage;
+diff --git a/apps/web/app/routes/core.ts b/apps/web/app/routes/core.ts
+index c9c82bd..8572f6c 100644
+--- a/apps/web/app/routes/core.ts
++++ b/apps/web/app/routes/core.ts
+@@ -62,6 +62,9 @@ export const coreRoutes: RouteConfigEntry[] = [
+         // Workspace Home
+         route(":workspaceSlug", "./(all)/[workspaceSlug]/(projects)/page.tsx"),
+ 
++        // Rivetta Vault — ideeën in de wacht
++        route(":workspaceSlug/vault", "./(all)/[workspaceSlug]/(projects)/vault/page.tsx"),
++
+         // Active Cycles
+         layout("./(all)/[workspaceSlug]/(projects)/active-cycles/layout.tsx", [
+           route(":workspaceSlug/active-cycles", "./(all)/[workspaceSlug]/(projects)/active-cycles/page.tsx"),
+diff --git a/apps/web/ce/components/projects/create/root.tsx b/apps/web/ce/components/projects/create/root.tsx
+index 3e4b5b4..5595c6a 100644
+--- a/apps/web/ce/components/projects/create/root.tsx
++++ b/apps/web/ce/components/projects/create/root.tsx
+@@ -17,13 +17,18 @@ import ProjectCreateHeader from "@/components/project/create/header";
+ import ProjectCreateButtons from "@/components/project/create/project-create-buttons";
+ // hooks
+ import { getCoverImageType, uploadCoverImage } from "@/helpers/cover-image.helper";
++import { encodePhase, type ProjectPhase, PHASES } from "@/helpers/rivetta/phase";
+ import { useProject } from "@/hooks/store/use-project";
+ import { usePlatformOS } from "@/hooks/use-platform-os";
++// services
++import { ProjectPageService } from "@/services/page/project-page.service";
+ // plane web types
+ import type { TProject } from "@/plane-web/types/projects";
+ import { ProjectAttributes } from "./attributes";
+ import { getProjectFormValues } from "./utils";
+ 
++const pageService = new ProjectPageService();
++
+ export type TCreateProjectFormProps = {
+   setToFavorite?: boolean;
+   workspaceSlug: string;
+@@ -41,6 +46,8 @@ export const CreateProjectForm = observer(function CreateProjectForm(props: TCre
+   const { addProjectToFavorites, createProject, updateProject } = useProject();
+   // states
+   const [shouldAutoSyncIdentifier, setShouldAutoSyncIdentifier] = useState(true);
++  const [rivettaPhase, setRivettaPhase] = useState<ProjectPhase>("vault");
++  const [useTemplate, setUseTemplate] = useState(true);
+   // form info
+   const methods = useForm<TProject>({
+     defaultValues: { ...getProjectFormValues(), ...data },
+@@ -63,6 +70,8 @@ export const CreateProjectForm = observer(function CreateProjectForm(props: TCre
+   const onSubmit = async (formData: Partial<TProject>) => {
+     // Upper case identifier
+     formData.identifier = formData.identifier?.toUpperCase();
++    // Encode Rivetta phase into description
++    formData.description = encodePhase(rivettaPhase, formData.description ?? "");
+     const coverImage = formData.cover_image_url;
+     let uploadedAssetUrl: string | null = null;
+ 
+@@ -107,6 +116,24 @@ export const CreateProjectForm = observer(function CreateProjectForm(props: TCre
+           message: t("project_created_successfully"),
+         });
+ 
++        // Create Rivetta template pages
++        if (useTemplate) {
++          const templatePages =
++            rivettaPhase === "vault"
++              ? ["Brief"]
++              : ["Brief", "Design", "Materialen", "Technisch", "Productie", "Marketing & Sales"];
++          await Promise.all(
++            templatePages.map((name, idx) =>
++              pageService.create(workspaceSlug, res.id, {
++                name,
++                description_html: "<p></p>",
++                access: 0,
++                sort_order: (idx + 1) * 10000,
++              } as Parameters<typeof pageService.create>[2])
++            )
++          ).catch(() => {/* template pages are best-effort */});
++        }
++
+         if (setToFavorite) {
+           handleAddToFavorites(res.id);
+         }
+@@ -176,6 +203,50 @@ export const CreateProjectForm = observer(function CreateProjectForm(props: TCre
+             setShouldAutoSyncIdentifier={setShouldAutoSyncIdentifier}
+           />
+           <ProjectAttributes isMobile={isMobile} />
++
++          {/* ── Rivetta: Startfase ── */}
++          <div className="space-y-2">
++            <label className="text-sm font-medium text-gray-700">Startfase</label>
++            <div className="flex flex-col gap-1.5">
++              {(["vault", "design_s1"] as ProjectPhase[]).map((ph) => (
++                <label key={ph} className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
++                  <input
++                    type="radio"
++                    name="rivetta-phase"
++                    checked={rivettaPhase === ph}
++                    onChange={() => setRivettaPhase(ph)}
++                    className="accent-indigo-600"
++                  />
++                  {PHASES[ph].label}
++                </label>
++              ))}
++            </div>
++          </div>
++
++          {/* ── Rivetta: Template pagina's ── */}
++          <div className="space-y-1.5">
++            <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
++              <input
++                type="checkbox"
++                checked={useTemplate}
++                onChange={(e) => setUseTemplate(e.target.checked)}
++                className="accent-indigo-600 w-4 h-4"
++              />
++              Standaard pagina's aanmaken
++            </label>
++            {useTemplate && (
++              <div className="ml-6 flex flex-wrap gap-1.5">
++                {(rivettaPhase === "vault"
++                  ? ["Brief"]
++                  : ["Brief", "Design", "Materialen", "Technisch", "Productie", "Marketing & Sales"]
++                ).map((p) => (
++                  <span key={p} className="px-2 py-0.5 bg-indigo-50 text-indigo-600 text-xs rounded font-medium">
++                    {p}
++                  </span>
++                ))}
++              </div>
++            )}
++          </div>
+         </div>
+         <ProjectCreateButtons handleClose={handleClose} />
+       </form>
+diff --git a/apps/web/core/components/project/card.tsx b/apps/web/core/components/project/card.tsx
+index c9286d1..21cde45 100644
+--- a/apps/web/core/components/project/card.tsx
++++ b/apps/web/core/components/project/card.tsx
+@@ -30,6 +30,8 @@ import { useAppRouter } from "@/hooks/use-app-router";
+ import { usePlatformOS } from "@/hooks/use-platform-os";
+ // local imports
+ import { CoverImage } from "@/components/common/cover-image";
++import { RivettaPhaseBadge } from "@/components/rivetta/phase-badge";
++import { stripPhaseMarker } from "@/helpers/rivetta/phase";
+ import { DeleteProjectModal } from "./delete-project-modal";
+ import { JoinProjectModal } from "./join-project-modal";
+ import { ArchiveRestoreProjectModal } from "./archive-restore-modal";
+@@ -226,7 +228,10 @@ export const ProjectCard = observer(function ProjectCard(props: Props) {
+               </div>
+ 
+               <div className="flex w-full flex-col justify-between gap-0.5 truncate">
+-                <h3 className="truncate font-semibold text-on-color">{project.name}</h3>
++                <div className="flex items-center gap-1.5">
++                  <h3 className="truncate font-semibold text-on-color">{project.name}</h3>
++                  <RivettaPhaseBadge description={project.description ?? ""} className="shrink-0" />
++                </div>
+                 <span className="flex items-center gap-1.5">
+                   <p className="text-11 font-medium text-on-color">{project.identifier} </p>
+                   {project.network === 0 && <LockIcon className="h-2.5 w-2.5 text-on-color" />}
+@@ -272,8 +277,8 @@ export const ProjectCard = observer(function ProjectCard(props: Props) {
+           })}
+         >
+           <p className="line-clamp-2 text-13 break-words text-tertiary">
+-            {project.description && project.description.trim() !== ""
+-              ? project.description
++            {project.description && stripPhaseMarker(project.description).trim() !== ""
++              ? stripPhaseMarker(project.description)
+               : `Created on ${renderFormattedDate(project.created_at)}`}
+           </p>
+           <div className="item-center flex justify-between">
+diff --git a/apps/web/core/components/project/form.tsx b/apps/web/core/components/project/form.tsx
+index b14b63c..d635a34 100644
+--- a/apps/web/core/components/project/form.tsx
++++ b/apps/web/core/components/project/form.tsx
+@@ -30,6 +30,7 @@ import { usePlatformOS } from "@/hooks/use-platform-os";
+ // services
+ import { ProjectService } from "@/services/project";
+ // local imports
++import { RivettaPhaseControls } from "@/components/rivetta/phase-controls";
+ import { ProjectNetworkIcon } from "./project-network-icon";
+ 
+ export interface IProjectDetailsForm {
+@@ -427,6 +428,12 @@ export function ProjectDetailsForm(props: IProjectDetailsForm) {
+             {errors.timezone && <span className="text-11 text-danger-primary">{errors.timezone.message}</span>}
+           </div>
+         </div>
++        {/* ── Rivetta: Fase tracking ── */}
++        <div className="flex flex-col gap-1">
++          <h4 className="text-13 font-medium">Productiefase</h4>
++          <RivettaPhaseControls project={project} />
++        </div>
++
+         <div className="flex items-center justify-between py-2">
+           <>
+             <Button variant="primary" size="lg" type="submit" loading={isLoading} disabled={!isAdmin}>
+diff --git a/apps/web/core/components/rivetta/handoff-modal.tsx b/apps/web/core/components/rivetta/handoff-modal.tsx
+new file mode 100644
+index 0000000..1752244
+--- /dev/null
++++ b/apps/web/core/components/rivetta/handoff-modal.tsx
+@@ -0,0 +1,148 @@
++import { useState } from "react";
++import { ArrowRight, X, CheckCircle2, Circle, Megaphone, AlertCircle } from "lucide-react";
++
++const CHECKLIST_ITEMS = [
++  { id: "productie", label: "Productieopdracht goedgekeurd & bevestigd" },
++  { id: "fotos",    label: "Productfoto's en media gereed" },
++  { id: "maten",    label: "Maatspecificaties en pasvorm definitief" },
++  { id: "ce",       label: "CE-certificering en veiligheidslabels in orde" },
++  { id: "prijs",    label: "Verkoopprijs en marges vastgesteld" },
++];
++
++interface Props {
++  projectName: string;
++  onConfirm: (briefing: string, checkedItems: string[]) => Promise<void>;
++  onCancel: () => void;
++}
++
++export function RivettaHandoffModal({ projectName, onConfirm, onCancel }: Props) {
++  const [checked, setChecked] = useState<Record<string, boolean>>(
++    Object.fromEntries(CHECKLIST_ITEMS.map((i) => [i.id, false]))
++  );
++  const [briefing, setBriefing] = useState("");
++  const [saving, setSaving] = useState(false);
++  const [error, setError] = useState<string | null>(null);
++
++  const allChecked = CHECKLIST_ITEMS.every((i) => checked[i.id]);
++  const checkedCount = Object.values(checked).filter(Boolean).length;
++  const toggle = (id: string) => setChecked((prev) => ({ ...prev, [id]: !prev[id] }));
++
++  const handleConfirm = async () => {
++    setSaving(true);
++    setError(null);
++    try {
++      const checkedItems = CHECKLIST_ITEMS.filter((i) => checked[i.id]).map((i) => i.label);
++      await onConfirm(briefing, checkedItems);
++    } catch (err) {
++      setError(err instanceof Error ? err.message : "Handover mislukt");
++      setSaving(false);
++    }
++  };
++
++  return (
++    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
++      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden">
++        {/* Header */}
++        <div className="bg-gradient-to-r from-green-50 to-pink-50 px-6 py-5 border-b border-gray-100">
++          <div className="flex items-start justify-between">
++            <div className="flex items-center gap-3">
++              <div className="flex items-center gap-1">
++                <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
++                  <span className="text-sm">⚙️</span>
++                </div>
++                <ArrowRight className="w-4 h-4 text-gray-400" />
++                <div className="w-8 h-8 bg-pink-100 rounded-lg flex items-center justify-center">
++                  <Megaphone className="w-4 h-4 text-pink-600" />
++                </div>
++              </div>
++              <div>
++                <h2 className="text-base font-bold text-gray-900">Handover naar Marketing & Sales</h2>
++                <p className="text-xs text-gray-500 mt-0.5 truncate max-w-[280px]">{projectName}</p>
++              </div>
++            </div>
++            <button onClick={onCancel} className="p-1.5 hover:bg-white/60 rounded-lg transition-colors">
++              <X className="w-4 h-4 text-gray-500" />
++            </button>
++          </div>
++        </div>
++
++        <div className="px-6 py-5 space-y-5 max-h-[60vh] overflow-y-auto">
++          {/* Checklist */}
++          <div>
++            <div className="flex items-center justify-between mb-3">
++              <p className="text-sm font-semibold text-gray-800">Bevestig dat alles gereed is</p>
++              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${allChecked ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-500"}`}>
++                {checkedCount}/{CHECKLIST_ITEMS.length}
++              </span>
++            </div>
++            <div className="space-y-2">
++              {CHECKLIST_ITEMS.map((item) => (
++                <button
++                  key={item.id}
++                  onClick={() => toggle(item.id)}
++                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-all ${
++                    checked[item.id]
++                      ? "bg-green-50 border-green-200 text-green-800"
++                      : "bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100"
++                  }`}
++                >
++                  {checked[item.id]
++                    ? <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
++                    : <Circle className="w-4 h-4 text-gray-300 shrink-0" />
++                  }
++                  <span className="text-sm">{item.label}</span>
++                </button>
++              ))}
++            </div>
++          </div>
++
++          {/* Briefing */}
++          <div>
++            <label className="block text-sm font-semibold text-gray-800 mb-2">
++              Handover briefing voor Marketing & Sales
++              <span className="text-gray-400 font-normal ml-1">(optioneel)</span>
++            </label>
++            <textarea
++              value={briefing}
++              onChange={(e) => setBriefing(e.target.value)}
++              rows={4}
++              placeholder="Beschrijf de kernpunten voor Marketing: positionering, doelgroep, USP's, campagne-ideeën, releasewindow..."
++              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent resize-none placeholder:text-gray-400"
++            />
++            <p className="text-xs text-gray-400 mt-1">
++              Dit wordt opgeslagen als "Handover briefing" in de projectpagina's.
++            </p>
++          </div>
++
++          {error && (
++            <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
++              <AlertCircle className="w-4 h-4 shrink-0" /> {error}
++            </div>
++          )}
++        </div>
++
++        {/* Footer */}
++        <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex items-center justify-between">
++          <button onClick={onCancel} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors">
++            Annuleren
++          </button>
++          <button
++            onClick={handleConfirm}
++            disabled={!allChecked || saving}
++            className="flex items-center gap-2 px-5 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
++          >
++            {saving ? (
++              <span>Handover verwerken...</span>
++            ) : (
++              <>
++                <Megaphone className="w-4 h-4" />
++                Handover bevestigen
++                {!allChecked && <span className="text-green-200 text-xs ml-1">— vink alles af</span>}
++              </>
++            )}
++          </button>
++        </div>
++      </div>
++    </div>
++  );
++}
+diff --git a/apps/web/core/components/rivetta/phase-badge.tsx b/apps/web/core/components/rivetta/phase-badge.tsx
+new file mode 100644
+index 0000000..b2aa414
+--- /dev/null
++++ b/apps/web/core/components/rivetta/phase-badge.tsx
+@@ -0,0 +1,47 @@
++import { parsePhase, PHASES, ProjectPhase } from "@/helpers/rivetta/phase";
++
++interface BadgeProps {
++  description: string;
++  className?: string;
++  phase?: ProjectPhase;
++}
++
++export function RivettaPhaseBadge({ description, className = "", phase: forcedPhase }: BadgeProps) {
++  const phase = forcedPhase ?? parsePhase(description);
++  const cfg = PHASES[phase];
++  return (
++    <span
++      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${cfg.bgClass} ${cfg.textClass} ${className}`}
++    >
++      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${cfg.dotClass}`} />
++      {cfg.shortLabel}
++    </span>
++  );
++}
++
++export function RivettaPhaseTimeline({ description }: { description: string }) {
++  const current = parsePhase(description);
++  const visible: ProjectPhase[] = [
++    "vault", "design_s1", "design_s2", "design_s3",
++    "preproduction", "production", "release", "marketing",
++  ];
++  const activeIdx = visible.indexOf(current);
++  return (
++    <div className="flex items-center gap-0.5 w-full">
++      {visible.map((phase, idx) => {
++        const cfg = PHASES[phase];
++        const done = idx < activeIdx;
++        const active = idx === activeIdx;
++        return (
++          <div
++            key={phase}
++            title={cfg.label}
++            className={`h-1 flex-1 rounded-full transition-all ${
++              active ? cfg.dotClass : done ? "bg-indigo-300" : "bg-gray-200"
++            }`}
++          />
++        );
++      })}
++    </div>
++  );
++}
+diff --git a/apps/web/core/components/rivetta/phase-controls.tsx b/apps/web/core/components/rivetta/phase-controls.tsx
+new file mode 100644
+index 0000000..6e82d75
+--- /dev/null
++++ b/apps/web/core/components/rivetta/phase-controls.tsx
+@@ -0,0 +1,141 @@
++import { useState } from "react";
++import { observer } from "mobx-react";
++import { useParams } from "next/navigation";
++import { ChevronRight, Loader2, Archive, Megaphone } from "lucide-react";
++import type { IProject } from "@plane/types";
++import { TOAST_TYPE, setToast } from "@plane/propel/toast";
++import { parsePhase, getNextPhase, encodePhase, stripPhaseMarker, PHASES } from "@/helpers/rivetta/phase";
++import { useProject } from "@/hooks/store/use-project";
++import { ProjectPageService } from "@/services/page/project-page.service";
++import { RivettaPhaseBadge, RivettaPhaseTimeline } from "./phase-badge";
++import { RivettaHandoffModal } from "./handoff-modal";
++
++const pageService = new ProjectPageService();
++
++interface Props {
++  project: IProject;
++}
++
++export const RivettaPhaseControls = observer(function RivettaPhaseControls({ project }: Props) {
++  const [advancing, setAdvancing] = useState(false);
++  const [showHandoff, setShowHandoff] = useState(false);
++
++  const { workspaceSlug } = useParams<{ workspaceSlug: string }>();
++  const { updateProject } = useProject();
++
++  const phase = parsePhase(project.description ?? "");
++  const nextPhase = getNextPhase(phase);
++
++  const handleAdvance = async () => {
++    if (!nextPhase || !workspaceSlug) return;
++    if (phase === "production") {
++      setShowHandoff(true);
++      return;
++    }
++    setAdvancing(true);
++    try {
++      const newDesc = encodePhase(nextPhase, stripPhaseMarker(project.description ?? ""));
++      await updateProject(workspaceSlug, project.id, { description: newDesc });
++      setToast({ type: TOAST_TYPE.SUCCESS, title: "Fase bijgewerkt", message: `Project staat nu in: ${PHASES[nextPhase].label}` });
++    } catch {
++      setToast({ type: TOAST_TYPE.ERROR, title: "Fout", message: "Fase-overgang mislukt" });
++    } finally {
++      setAdvancing(false);
++    }
++  };
++
++  const handleArchive = async () => {
++    if (!workspaceSlug) return;
++    if (!confirm(`"${project.name}" archiveren?`)) return;
++    try {
++      const newDesc = encodePhase("archived", stripPhaseMarker(project.description ?? ""));
++      await updateProject(workspaceSlug, project.id, { description: newDesc });
++      setToast({ type: TOAST_TYPE.SUCCESS, title: "Gearchiveerd", message: project.name });
++    } catch {
++      setToast({ type: TOAST_TYPE.ERROR, title: "Fout", message: "Archiveren mislukt" });
++    }
++  };
++
++  const handleHandoffConfirm = async (briefing: string, checkedItems: string[]) => {
++    if (!workspaceSlug) return;
++    setAdvancing(true);
++
++    const today = new Date().toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric" });
++    const checklistHtml = checkedItems.map((item) => `<li>✅ ${item}</li>`).join("");
++    const descriptionHtml = `
++      <h2>Handover — ${project.name}</h2>
++      <p><strong>Datum:</strong> ${today}</p>
++      <h3>Checklist afgerond</h3>
++      <ul>${checklistHtml}</ul>
++      ${briefing.trim() ? `<h3>Toelichting voor Marketing &amp; Sales</h3><p>${briefing.replace(/\n/g, "<br/>")}</p>` : ""}
++    `.trim();
++
++    const newDesc = encodePhase("release", stripPhaseMarker(project.description ?? ""));
++
++    await Promise.all([
++      pageService.create(workspaceSlug, project.id, {
++        name: `Handover briefing — ${today}`,
++        description_html: descriptionHtml,
++        access: 0,
++      }),
++      updateProject(workspaceSlug, project.id, { description: newDesc }),
++    ]);
++
++    setToast({ type: TOAST_TYPE.SUCCESS, title: "Handover voltooid", message: "Project staat nu in Release-fase" });
++    setShowHandoff(false);
++    setAdvancing(false);
++  };
++
++  const phaseCfg = PHASES[phase];
++
++  return (
++    <>
++      <div className="flex flex-col gap-2 p-3 rounded-lg border border-gray-200 bg-gray-50">
++        <div className="flex items-center justify-between gap-2">
++          <div className="flex items-center gap-2">
++            <span className="text-xs font-medium text-gray-500">Fase</span>
++            <RivettaPhaseBadge description={project.description ?? ""} />
++          </div>
++          <div className="flex items-center gap-1">
++            {nextPhase && (
++              <button
++                onClick={handleAdvance}
++                disabled={advancing}
++                title={`Naar ${PHASES[nextPhase].label}`}
++                className="flex items-center gap-1 px-2 py-1 text-xs font-medium bg-indigo-600 text-white hover:bg-indigo-700 rounded-md transition-colors disabled:opacity-50"
++              >
++                {advancing ? (
++                  <Loader2 className="w-3 h-3 animate-spin" />
++                ) : phase === "production" ? (
++                  <Megaphone className="w-3 h-3" />
++                ) : (
++                  <ChevronRight className="w-3 h-3" />
++                )}
++                {PHASES[nextPhase].shortLabel}
++              </button>
++            )}
++            {phase !== "archived" && (
++              <button
++                onClick={handleArchive}
++                title="Archiveren"
++                className="p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-200 rounded transition-colors"
++              >
++                <Archive className="w-3.5 h-3.5" />
++              </button>
++            )}
++          </div>
++        </div>
++        <RivettaPhaseTimeline description={project.description ?? ""} />
++        <p className="text-[10px] text-gray-400">{phaseCfg.label}</p>
++      </div>
++
++      {showHandoff && (
++        <RivettaHandoffModal
++          projectName={project.name}
++          onConfirm={handleHandoffConfirm}
++          onCancel={() => { setShowHandoff(false); setAdvancing(false); }}
++        />
++      )}
++    </>
++  );
++});
+diff --git a/apps/web/core/helpers/rivetta/phase.ts b/apps/web/core/helpers/rivetta/phase.ts
+new file mode 100644
+index 0000000..4118f4b
+--- /dev/null
++++ b/apps/web/core/helpers/rivetta/phase.ts
+@@ -0,0 +1,125 @@
++export type ProjectPhase =
++  | 'vault'
++  | 'design_s1'
++  | 'design_s2'
++  | 'design_s3'
++  | 'preproduction'
++  | 'production'
++  | 'release'
++  | 'marketing'
++  | 'archived';
++
++export interface PhaseConfig {
++  label: string;
++  shortLabel: string;
++  bgClass: string;
++  textClass: string;
++  dotClass: string;
++}
++
++export const PHASES: Record<ProjectPhase, PhaseConfig> = {
++  vault: {
++    label: 'Vault — Idee',
++    shortLabel: 'Vault',
++    bgClass: 'bg-gray-100',
++    textClass: 'text-gray-600',
++    dotClass: 'bg-gray-400',
++  },
++  design_s1: {
++    label: 'Design — Sample 1',
++    shortLabel: 'Sample 1',
++    bgClass: 'bg-sky-50',
++    textClass: 'text-sky-700',
++    dotClass: 'bg-sky-500',
++  },
++  design_s2: {
++    label: 'Redesign — Sample 2',
++    shortLabel: 'Sample 2',
++    bgClass: 'bg-blue-50',
++    textClass: 'text-blue-700',
++    dotClass: 'bg-blue-500',
++  },
++  design_s3: {
++    label: 'Redesign — Sample 3',
++    shortLabel: 'Sample 3',
++    bgClass: 'bg-indigo-50',
++    textClass: 'text-indigo-700',
++    dotClass: 'bg-indigo-500',
++  },
++  preproduction: {
++    label: 'Pre-productie',
++    shortLabel: 'Pre-prod',
++    bgClass: 'bg-violet-50',
++    textClass: 'text-violet-700',
++    dotClass: 'bg-violet-500',
++  },
++  production: {
++    label: 'Productie',
++    shortLabel: 'Productie',
++    bgClass: 'bg-orange-50',
++    textClass: 'text-orange-700',
++    dotClass: 'bg-orange-500',
++  },
++  release: {
++    label: 'Release',
++    shortLabel: 'Release',
++    bgClass: 'bg-green-50',
++    textClass: 'text-green-700',
++    dotClass: 'bg-green-500',
++  },
++  marketing: {
++    label: 'Marketing & Sales',
++    shortLabel: 'Marketing',
++    bgClass: 'bg-pink-50',
++    textClass: 'text-pink-700',
++    dotClass: 'bg-pink-500',
++  },
++  archived: {
++    label: 'Gearchiveerd',
++    shortLabel: 'Archief',
++    bgClass: 'bg-gray-100',
++    textClass: 'text-gray-400',
++    dotClass: 'bg-gray-300',
++  },
++};
++
++export const PHASE_ORDER: ProjectPhase[] = [
++  'vault',
++  'design_s1',
++  'design_s2',
++  'design_s3',
++  'preproduction',
++  'production',
++  'release',
++  'marketing',
++  'archived',
++];
++
++// Active phases shown in the "In ontwikkeling" group
++export const ACTIVE_PHASES: ProjectPhase[] = [
++  'design_s1', 'design_s2', 'design_s3', 'preproduction', 'production',
++];
++
++const MARKER_RE = /^\[_riv:([a-z_0-9]+)\]\n?/;
++
++export function parsePhase(description: string): ProjectPhase {
++  const m = (description ?? '').match(MARKER_RE);
++  if (m && m[1] in PHASES) return m[1] as ProjectPhase;
++  return 'vault';
++}
++
++export function encodePhase(phase: ProjectPhase, description: string): string {
++  return `[_riv:${phase}]\n${stripPhaseMarker(description)}`;
++}
++
++export function stripPhaseMarker(description: string): string {
++  return (description ?? '').replace(MARKER_RE, '');
++}
++
++export function getNextPhase(current: ProjectPhase): ProjectPhase | null {
++  const idx = PHASE_ORDER.indexOf(current);
++  // archived is the last, marketing->archived requires explicit archive action
++  if (idx < 0 || idx >= PHASE_ORDER.length - 1) return null;
++  if (current === 'marketing') return null; // archiving is a separate action
++  return PHASE_ORDER[idx + 1];
++}
+diff --git a/apps/web/styles/globals.css b/apps/web/styles/globals.css
+index ab520ab..958ab2a 100644
+--- a/apps/web/styles/globals.css
++++ b/apps/web/styles/globals.css
+@@ -1,4 +1,17 @@
+ @import "@plane/tailwind-config/index.css";
++
++/*
++  Rivetta phase colors — referenced here so Tailwind v4 includes them.
++  bg-gray-100 text-gray-600 bg-gray-400
++  bg-sky-50 text-sky-700 bg-sky-500
++  bg-blue-50 text-blue-700 bg-blue-500
++  bg-indigo-50 text-indigo-700 bg-indigo-500
++  bg-violet-50 text-violet-700 bg-violet-500
++  bg-orange-50 text-orange-700 bg-orange-500
++  bg-green-50 text-green-700 bg-green-500
++  bg-pink-50 text-pink-700 bg-pink-500
++  bg-gray-300 text-gray-400 bg-indigo-300 bg-gray-200
++*/
+ @import "@plane/editor/styles";
+ @import "@plane/propel/styles/react-day-picker.css";
+ @import "./power-k.css";
+-- 
+2.43.0
+
