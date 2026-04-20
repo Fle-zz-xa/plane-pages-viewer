@@ -1,0 +1,912 @@
+From 4fcc43807c8e761741034e9c956b2bf7fea667dc Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 20 Apr 2026 16:35:07 +0000
+Subject: [PATCH] =?UTF-8?q?feat(rivetta):=20v3=20=E2=80=94=20pipeline=20bo?=
+ =?UTF-8?q?ard,=20fase-filter,=20auto-pages,=20AlertModalCore?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Six improvements built on the v2 native integration:
+
+1. AlertModalCore replaces all confirm() calls (phase-controls, phase-chip,
+   vault page) — native Plane modals for advance/archive confirmations
+
+2. Pipeline Board at /:workspaceSlug/pipeline — BaseKanbanLayout with one
+   column per production phase, drag-drop between phases, clickable cards
+
+3. Fase-filter pills on /projects page — client-side filter bar above the
+   project grid; click any phase to filter, click again to clear
+
+4. Auto-page creation on phase advance — each transition creates a best-effort
+   template page (Design Sample 1/2/3, Pre-productie planning, etc.)
+
+5. Vault cards now navigate to project on click; AlertModalCore for Start Design
+
+6. RivettaPhaseBadge in pages list header (next to tab navigation)
+
+New files:
+  apps/web/app/(all)/[workspaceSlug]/(projects)/pipeline/page.tsx
+  apps/web/core/components/rivetta/pipeline-board.tsx
+
+https://claude.ai/code/session_01F5cb5GugZVUfYFuetxJNHt
+---
+ .../(projects)/pipeline/page.tsx              |  34 ++++
+ .../[workspaceSlug]/(projects)/sidebar.tsx    |  17 +-
+ .../[workspaceSlug]/(projects)/vault/page.tsx |  52 ++++--
+ apps/web/app/routes/core.ts                   |   3 +
+ .../web/core/components/pages/header/root.tsx |   5 +
+ apps/web/core/components/project/root.tsx     |  63 ++++++-
+ .../core/components/rivetta/phase-chip.tsx    |  81 ++++++---
+ .../components/rivetta/phase-controls.tsx     |  83 +++++++---
+ .../components/rivetta/pipeline-board.tsx     | 156 ++++++++++++++++++
+ 9 files changed, 431 insertions(+), 63 deletions(-)
+ create mode 100644 apps/web/app/(all)/[workspaceSlug]/(projects)/pipeline/page.tsx
+ create mode 100644 apps/web/core/components/rivetta/pipeline-board.tsx
+
+diff --git a/apps/web/app/(all)/[workspaceSlug]/(projects)/pipeline/page.tsx b/apps/web/app/(all)/[workspaceSlug]/(projects)/pipeline/page.tsx
+new file mode 100644
+index 0000000..def0313
+--- /dev/null
++++ b/apps/web/app/(all)/[workspaceSlug]/(projects)/pipeline/page.tsx
+@@ -0,0 +1,34 @@
++import { observer } from "mobx-react";
++import { useParams } from "next/navigation";
++import { LayoutKanban } from "lucide-react";
++import { RivettaPipelineBoard } from "@/components/rivetta/pipeline-board";
++import { useProject } from "@/hooks/store/use-project";
++
++const PipelinePage = observer(function PipelinePage() {
++  const { workspaceSlug } = useParams<{ workspaceSlug: string }>();
++  const { joinedProjectIds } = useProject();
++
++  const total = (joinedProjectIds ?? []).length;
++
++  return (
++    <div className="flex h-full flex-col">
++      {/* Header */}
++      <div className="flex shrink-0 items-center gap-3 border-b border-subtle bg-surface-1 px-6 py-4">
++        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-subtle">
++          <LayoutKanban className="h-4 w-4 text-accent-primary" />
++        </div>
++        <div>
++          <h1 className="text-13 font-semibold text-primary">Pipeline</h1>
++          <p className="text-11 text-placeholder">{total} project{total !== 1 ? "en" : ""} in overzicht</p>
++        </div>
++      </div>
++
++      {/* Board */}
++      <div className="flex-1 overflow-hidden">
++        <RivettaPipelineBoard workspaceSlug={workspaceSlug!} />
++      </div>
++    </div>
++  );
++});
++
++export default PipelinePage;
+diff --git a/apps/web/app/(all)/[workspaceSlug]/(projects)/sidebar.tsx b/apps/web/app/(all)/[workspaceSlug]/(projects)/sidebar.tsx
+index b2d3fcf..cf31c5a 100644
+--- a/apps/web/app/(all)/[workspaceSlug]/(projects)/sidebar.tsx
++++ b/apps/web/app/(all)/[workspaceSlug]/(projects)/sidebar.tsx
+@@ -7,7 +7,7 @@
+ import { isEmpty } from "lodash-es";
+ import { observer } from "mobx-react";
+ import { useParams, useNavigate } from "react-router";
+-import { Package } from "lucide-react";
++import { Package, LayoutKanban } from "lucide-react";
+ // plane helpers
+ import { EUserPermissions, EUserPermissionsLevel } from "@plane/constants";
+ import { cn } from "@plane/utils";
+@@ -38,7 +38,9 @@ export const AppSidebar = observer(function AppSidebar() {
+   );
+ 
+   const isFavoriteEmpty = isEmpty(groupedFavorites);
+-  const isVaultActive = typeof window !== "undefined" && window.location.pathname.includes("/vault");
++  const pathname = typeof window !== "undefined" ? window.location.pathname : "";
++  const isVaultActive = pathname.includes("/vault");
++  const isPipelineActive = pathname.includes("/pipeline");
+ 
+   return (
+     <SidebarWrapper title="Projects" quickActions={<SidebarQuickActions />}>
+@@ -58,6 +60,17 @@ export const AppSidebar = observer(function AppSidebar() {
+           Vault
+         </div>
+       </SidebarNavItem>
++      {/* Rivetta Pipeline nav item */}
++      <SidebarNavItem
++        isActive={isPipelineActive}
++        className="cursor-pointer"
++        onClick={() => navigate(`/${workspaceSlug}/pipeline`)}
++      >
++        <div className="flex items-center gap-2.5 text-13 font-medium">
++          <LayoutKanban className="h-4 w-4 shrink-0" />
++          Pipeline
++        </div>
++      </SidebarNavItem>
+       {/* Projects List */}
+       <SidebarProjectsList />
+     </SidebarWrapper>
+diff --git a/apps/web/app/(all)/[workspaceSlug]/(projects)/vault/page.tsx b/apps/web/app/(all)/[workspaceSlug]/(projects)/vault/page.tsx
+index f5b3051..ef3da53 100644
+--- a/apps/web/app/(all)/[workspaceSlug]/(projects)/vault/page.tsx
++++ b/apps/web/app/(all)/[workspaceSlug]/(projects)/vault/page.tsx
+@@ -1,20 +1,26 @@
+ import { observer } from "mobx-react";
+ import { useParams } from "next/navigation";
+ import { useState } from "react";
++import { useNavigate } from "react-router";
+ import { Package, ChevronRight, Loader2 } from "lucide-react";
+ import { Button } from "@plane/propel/button";
+ import { TOAST_TYPE, setToast } from "@plane/propel/toast";
+-import { cn } from "@plane/utils";
+ import { renderFormattedDate } from "@plane/utils";
+ import { Input } from "@plane/ui";
++import { AlertModalCore } from "@plane/ui";
+ import { parsePhase, encodePhase, stripPhaseMarker, PHASES } from "@/helpers/rivetta/phase";
+ import { useProject } from "@/hooks/store/use-project";
++import { ProjectPageService } from "@/services/page/project-page.service";
+ import { RivettaPhaseTimeline } from "@/components/rivetta/phase-badge";
+ 
++const pageService = new ProjectPageService();
++
+ const VaultPage = observer(function VaultPage() {
+   const { workspaceSlug } = useParams<{ workspaceSlug: string }>();
++  const navigate = useNavigate();
+   const [query, setQuery] = useState("");
+   const [advancing, setAdvancing] = useState<string | null>(null);
++  const [confirmTarget, setConfirmTarget] = useState<{ id: string; name: string; description: string } | null>(null);
+ 
+   const { joinedProjectIds, getPartialProjectById, updateProject } = useProject();
+ 
+@@ -34,14 +40,20 @@ const VaultPage = observer(function VaultPage() {
+       )
+     : vaultProjects;
+ 
+-  const handleStartDesign = async (projectId: string, projectName: string, description: string) => {
+-    if (!workspaceSlug) return;
+-    if (!confirm(`"${projectName}" starten met Sample 1?`)) return;
+-    setAdvancing(projectId);
++  const doStartDesign = async () => {
++    if (!workspaceSlug || !confirmTarget) return;
++    const { id, name, description } = confirmTarget;
++    setConfirmTarget(null);
++    setAdvancing(id);
+     try {
+       const newDesc = encodePhase("design_s1", stripPhaseMarker(description));
+-      await updateProject(workspaceSlug, projectId, { description: newDesc });
+-      setToast({ type: TOAST_TYPE.SUCCESS, title: "Fase bijgewerkt", message: `${projectName} staat nu in Design — Sample 1` });
++      await updateProject(workspaceSlug, id, { description: newDesc });
++      pageService.create(workspaceSlug, id, {
++        name: "Design — Sample 1",
++        description_html: "<p></p>",
++        access: 0,
++      }).catch(() => {/* best-effort */});
++      setToast({ type: TOAST_TYPE.SUCCESS, title: "Fase bijgewerkt", message: `${name} staat nu in Design — Sample 1` });
+     } catch {
+       setToast({ type: TOAST_TYPE.ERROR, title: "Fout", message: "Fase-overgang mislukt" });
+     } finally {
+@@ -94,14 +106,18 @@ const VaultPage = observer(function VaultPage() {
+             {filtered.map((project) => {
+               if (!project) return null;
+               const cleanDesc = stripPhaseMarker(project.description ?? "");
++              const isMember = !!project.member_role;
+               return (
+                 <div
+                   key={project.id}
+-                  className="flex flex-col gap-3 rounded-lg border border-subtle bg-layer-2 p-4 transition-all hover:border-strong hover:shadow-raised-100"
++                  onClick={() => isMember && navigate(`/${workspaceSlug}/projects/${project.id}/issues`)}
++                  className={`group flex flex-col gap-3 rounded-lg border border-subtle bg-layer-2 p-4 transition-all hover:border-strong hover:shadow-raised-100 ${isMember ? "cursor-pointer" : "cursor-default"}`}
+                 >
+                   <div className="flex items-start justify-between gap-2">
+                     <div className="min-w-0 flex-1">
+-                      <p className="truncate text-13 font-semibold text-primary">{project.name}</p>
++                      <p className="truncate text-13 font-semibold text-primary group-hover:text-accent-primary transition-colors">
++                        {project.name}
++                      </p>
+                       <p className="mt-0.5 font-mono text-11 text-placeholder">{project.identifier}</p>
+                     </div>
+                     <span className="inline-flex shrink-0 items-center gap-1 rounded bg-layer-3 px-1.5 py-0.5 text-11 font-medium text-placeholder">
+@@ -123,7 +139,10 @@ const VaultPage = observer(function VaultPage() {
+                     <Button
+                       variant="primary"
+                       size="sm"
+-                      onClick={() => handleStartDesign(project.id, project.name, project.description ?? "")}
++                      onClick={(e) => {
++                        e.stopPropagation();
++                        setConfirmTarget({ id: project.id, name: project.name, description: project.description ?? "" });
++                      }}
+                       disabled={advancing === project.id}
+                       prependIcon={advancing === project.id ? <Loader2 className="animate-spin" /> : <ChevronRight />}
+                     >
+@@ -136,6 +155,19 @@ const VaultPage = observer(function VaultPage() {
+           </div>
+         )}
+       </div>
++
++      {/* Start Design confirmation */}
++      <AlertModalCore
++        isOpen={!!confirmTarget}
++        handleClose={() => setConfirmTarget(null)}
++        handleSubmit={doStartDesign}
++        isSubmitting={!!advancing}
++        variant="primary"
++        title="Start Design — Sample 1"
++        content={`Weet je zeker dat je "${confirmTarget?.name}" wilt starten met Design — Sample 1?`}
++        primaryButtonText={{ default: "Start Design", loading: "Bezig..." }}
++        secondaryButtonText="Annuleren"
++      />
+     </div>
+   );
+ });
+diff --git a/apps/web/app/routes/core.ts b/apps/web/app/routes/core.ts
+index 8572f6c..7d47b9d 100644
+--- a/apps/web/app/routes/core.ts
++++ b/apps/web/app/routes/core.ts
+@@ -65,6 +65,9 @@ export const coreRoutes: RouteConfigEntry[] = [
+         // Rivetta Vault — ideeën in de wacht
+         route(":workspaceSlug/vault", "./(all)/[workspaceSlug]/(projects)/vault/page.tsx"),
+ 
++        // Rivetta Pipeline — kanban-overzicht per fase
++        route(":workspaceSlug/pipeline", "./(all)/[workspaceSlug]/(projects)/pipeline/page.tsx"),
++
+         // Active Cycles
+         layout("./(all)/[workspaceSlug]/(projects)/active-cycles/layout.tsx", [
+           route(":workspaceSlug/active-cycles", "./(all)/[workspaceSlug]/(projects)/active-cycles/page.tsx"),
+diff --git a/apps/web/core/components/pages/header/root.tsx b/apps/web/core/components/pages/header/root.tsx
+index 1223b97..5bdf5db 100644
+--- a/apps/web/core/components/pages/header/root.tsx
++++ b/apps/web/core/components/pages/header/root.tsx
+@@ -14,8 +14,10 @@ import { Header, EHeaderVariant } from "@plane/ui";
+ import { calculateTotalFilters } from "@plane/utils";
+ // components
+ import { FiltersDropdown } from "@/components/issues/issue-layouts/filters";
++import { RivettaPhaseBadge } from "@/components/rivetta/phase-badge";
+ // hooks
+ import { useMember } from "@/hooks/store/use-member";
++import { useProject } from "@/hooks/store/use-project";
+ // plane web hooks
+ import type { EPageStoreType } from "@/plane-web/hooks/store";
+ import { usePageStore } from "@/plane-web/hooks/store";
+@@ -41,6 +43,8 @@ export const PagesListHeaderRoot = observer(function PagesListHeaderRoot(props:
+   const {
+     workspace: { workspaceMemberIds },
+   } = useMember();
++  const { getPartialProjectById } = useProject();
++  const project = getPartialProjectById(projectId);
+ 
+   const handleRemoveFilter = useCallback(
+     (key: keyof TPageFilterProps, value: string | null) => {
+@@ -64,6 +68,7 @@ export const PagesListHeaderRoot = observer(function PagesListHeaderRoot(props:
+       <Header variant={EHeaderVariant.SECONDARY}>
+         <Header.LeftItem>
+           <PageTabNavigation workspaceSlug={workspaceSlug} projectId={projectId} pageType={pageType} />
++          {project && <RivettaPhaseBadge description={project.description ?? ""} />}
+         </Header.LeftItem>
+         <Header.RightItem className="items-center">
+           <PageSearchInput
+diff --git a/apps/web/core/components/project/root.tsx b/apps/web/core/components/project/root.tsx
+index 45dc41b..aa28826 100644
+--- a/apps/web/core/components/project/root.tsx
++++ b/apps/web/core/components/project/root.tsx
+@@ -4,30 +4,34 @@
+  * See the LICENSE file for details.
+  */
+ 
+-import { useCallback, useEffect } from "react";
++import { useCallback, useEffect, useState } from "react";
+ import { observer } from "mobx-react";
+ import { useParams, usePathname } from "next/navigation";
+ // plane imports
+ import { useTranslation } from "@plane/i18n";
+ import type { TProjectAppliedDisplayFilterKeys, TProjectFilters } from "@plane/types";
+-import { calculateTotalFilters } from "@plane/utils";
++import { calculateTotalFilters, cn } from "@plane/utils";
+ // components
+ import { PageHead } from "@/components/core/page-title";
+ // hooks
+ import { useProject } from "@/hooks/store/use-project";
+ import { useProjectFilter } from "@/hooks/store/use-project-filter";
+ import { useWorkspace } from "@/hooks/store/use-workspace";
++// rivetta
++import { parsePhase, PHASES, PHASE_ORDER, type ProjectPhase } from "@/helpers/rivetta/phase";
+ // local imports
+ import { ProjectAppliedFiltersList } from "./applied-filters";
+ import { ProjectCardList } from "./card-list";
+ 
++const PHASE_FILTER_ORDER: ProjectPhase[] = PHASE_ORDER.filter((p) => p !== "archived");
++
+ export const ProjectRoot = observer(function ProjectRoot() {
+   const { currentWorkspace } = useWorkspace();
+   const { workspaceSlug } = useParams();
+   const pathname = usePathname();
+   const { t } = useTranslation();
+   // store
+-  const { totalProjectIds, filteredProjectIds } = useProject();
++  const { totalProjectIds, filteredProjectIds, getProjectById } = useProject();
+   const {
+     currentWorkspaceFilters,
+     currentWorkspaceAppliedDisplayFilters,
+@@ -36,6 +40,9 @@ export const ProjectRoot = observer(function ProjectRoot() {
+     updateFilters,
+     updateDisplayFilters,
+   } = useProjectFilter();
++  // phase filter state
++  const [phaseFilter, setPhaseFilter] = useState<ProjectPhase | null>(null);
++
+   // derived values
+   const pageTitle = currentWorkspace?.name
+     ? `${currentWorkspace?.name} - ${t("workspace_projects.label", { count: 2 })}`
+@@ -46,14 +53,20 @@ export const ProjectRoot = observer(function ProjectRoot() {
+   const allowedDisplayFilters =
+     currentWorkspaceAppliedDisplayFilters?.filter((filter) => filter !== "archived_projects") ?? [];
+ 
++  // Apply phase filter on top of store-filtered IDs
++  const phaseFilteredIds = phaseFilter
++    ? (filteredProjectIds ?? []).filter((id) => {
++        const p = getProjectById(id);
++        return p ? parsePhase(p.description ?? "") === phaseFilter : false;
++      })
++    : filteredProjectIds;
++
+   const handleRemoveFilter = useCallback(
+     (key: keyof TProjectFilters, value: string | null) => {
+       if (!workspaceSlug) return;
+       let newValues = currentWorkspaceFilters?.[key] ?? [];
+-
+       if (!value) newValues = [];
+       else newValues = newValues.filter((val) => val !== value);
+-
+       updateFilters(workspaceSlug.toString(), { [key]: newValues });
+     },
+     [currentWorkspaceFilters, updateFilters, workspaceSlug]
+@@ -71,6 +84,7 @@ export const ProjectRoot = observer(function ProjectRoot() {
+     if (!workspaceSlug) return;
+     clearAllFilters(workspaceSlug.toString());
+     clearAllAppliedDisplayFilters(workspaceSlug.toString());
++    setPhaseFilter(null);
+     if (isArchived) updateDisplayFilters(workspaceSlug.toString(), { archived_projects: true });
+   }, [clearAllFilters, clearAllAppliedDisplayFilters, workspaceSlug]);
+ 
+@@ -94,7 +108,44 @@ export const ProjectRoot = observer(function ProjectRoot() {
+             alwaysAllowEditing
+           />
+         )}
+-        <ProjectCardList />
++
++        {/* Rivetta: fase-filter pills */}
++        {!isArchived && (
++          <div className="flex shrink-0 items-center gap-1.5 border-b border-subtle px-6 py-2">
++            <button
++              onClick={() => setPhaseFilter(null)}
++              className={cn(
++                "rounded-full px-2.5 py-0.5 text-11 font-medium transition-colors",
++                phaseFilter === null
++                  ? "bg-accent-primary text-on-color"
++                  : "bg-layer-3 text-secondary hover:bg-layer-3-hover"
++              )}
++            >
++              Alle
++            </button>
++            {PHASE_FILTER_ORDER.map((phase) => {
++              const cfg = PHASES[phase];
++              const isActive = phaseFilter === phase;
++              return (
++                <button
++                  key={phase}
++                  onClick={() => setPhaseFilter(isActive ? null : phase)}
++                  className={cn(
++                    "flex items-center gap-1 rounded-full px-2.5 py-0.5 text-11 font-medium transition-colors",
++                    isActive
++                      ? `${cfg.bgClass} ${cfg.textClass}`
++                      : "bg-layer-3 text-secondary hover:bg-layer-3-hover"
++                  )}
++                >
++                  {isActive && <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", cfg.dotClass)} />}
++                  {cfg.shortLabel}
++                </button>
++              );
++            })}
++          </div>
++        )}
++
++        <ProjectCardList filteredProjectIds={phaseFilteredIds ?? undefined} />
+       </div>
+     </>
+   );
+diff --git a/apps/web/core/components/rivetta/phase-chip.tsx b/apps/web/core/components/rivetta/phase-chip.tsx
+index 1348e8e..6e0237f 100644
+--- a/apps/web/core/components/rivetta/phase-chip.tsx
++++ b/apps/web/core/components/rivetta/phase-chip.tsx
+@@ -3,11 +3,11 @@ import { observer } from "mobx-react";
+ import { ChevronDown, Archive, Megaphone, ChevronRight } from "lucide-react";
+ import { Button } from "@plane/propel/button";
+ import { IconButton } from "@plane/propel/icon-button";
+-import { Pill, EPillSize } from "@plane/propel/pill";
+ import { Popover } from "@plane/propel/popover";
+ import { TOAST_TYPE, setToast } from "@plane/propel/toast";
++import { AlertModalCore } from "@plane/ui";
+ import { cn } from "@plane/utils";
+-import { parsePhase, getNextPhase, encodePhase, stripPhaseMarker, PHASES } from "@/helpers/rivetta/phase";
++import { parsePhase, getNextPhase, encodePhase, stripPhaseMarker, PHASES, type ProjectPhase } from "@/helpers/rivetta/phase";
+ import { useProject } from "@/hooks/store/use-project";
+ import { ProjectPageService } from "@/services/page/project-page.service";
+ import { RivettaPhaseTimeline } from "./phase-badge";
+@@ -15,6 +15,15 @@ import { RivettaHandoffModal } from "./handoff-modal";
+ 
+ const pageService = new ProjectPageService();
+ 
++const PHASE_PAGE_TEMPLATES: Partial<Record<ProjectPhase, string>> = {
++  design_s1:     "Design — Sample 1",
++  design_s2:     "Design — Sample 2",
++  design_s3:     "Design — Sample 3",
++  preproduction: "Pre-productie planning",
++  release:       "Release notes",
++  marketing:     "Marketing brief",
++};
++
+ interface Props {
+   projectId: string;
+   workspaceSlug: string;
+@@ -23,6 +32,8 @@ interface Props {
+ export const RivettaPhaseChip = observer(function RivettaPhaseChip({ projectId, workspaceSlug }: Props) {
+   const [advancing, setAdvancing] = useState(false);
+   const [showHandoff, setShowHandoff] = useState(false);
++  const [confirmAdvance, setConfirmAdvance] = useState(false);
++  const [confirmArchive, setConfirmArchive] = useState(false);
+ 
+   const { getPartialProjectById, updateProject } = useProject();
+   const project = getPartialProjectById(projectId);
+@@ -33,16 +44,21 @@ export const RivettaPhaseChip = observer(function RivettaPhaseChip({ projectId,
+   const nextPhase = getNextPhase(phase);
+   const cfg = PHASES[phase];
+ 
+-  const handleAdvance = async () => {
++  const doAdvance = async () => {
+     if (!nextPhase) return;
+-    if (phase === "production") {
+-      setShowHandoff(true);
+-      return;
+-    }
++    setConfirmAdvance(false);
+     setAdvancing(true);
+     try {
+       const newDesc = encodePhase(nextPhase, stripPhaseMarker(project.description ?? ""));
+       await updateProject(workspaceSlug, project.id, { description: newDesc });
++      const templateName = PHASE_PAGE_TEMPLATES[nextPhase];
++      if (templateName) {
++        pageService.create(workspaceSlug, project.id, {
++          name: templateName,
++          description_html: "<p></p>",
++          access: 0,
++        }).catch(() => {/* best-effort */});
++      }
+       setToast({ type: TOAST_TYPE.SUCCESS, title: "Fase bijgewerkt", message: PHASES[nextPhase].label });
+     } catch {
+       setToast({ type: TOAST_TYPE.ERROR, title: "Fout", message: "Fase-overgang mislukt" });
+@@ -51,8 +67,14 @@ export const RivettaPhaseChip = observer(function RivettaPhaseChip({ projectId,
+     }
+   };
+ 
+-  const handleArchive = async () => {
+-    if (!confirm(`"${project.name}" archiveren?`)) return;
++  const handleAdvanceClick = () => {
++    if (!nextPhase) return;
++    if (phase === "production") { setShowHandoff(true); return; }
++    setConfirmAdvance(true);
++  };
++
++  const doArchive = async () => {
++    setConfirmArchive(false);
+     try {
+       const newDesc = encodePhase("archived", stripPhaseMarker(project.description ?? ""));
+       await updateProject(workspaceSlug, project.id, { description: newDesc });
+@@ -107,7 +129,6 @@ export const RivettaPhaseChip = observer(function RivettaPhaseChip({ projectId,
+           className="z-50 w-64 rounded-lg border border-subtle bg-surface-1 p-3 shadow-raised-200"
+         >
+           <div className="flex flex-col gap-3">
+-            {/* Phase header */}
+             <div className="flex items-center justify-between gap-2">
+               <div className="flex items-center gap-1.5">
+                 <span className={cn("h-2 w-2 rounded-full shrink-0", cfg.dotClass)} />
+@@ -118,30 +139,20 @@ export const RivettaPhaseChip = observer(function RivettaPhaseChip({ projectId,
+                   variant="ghost"
+                   size="sm"
+                   icon={Archive}
+-                  onClick={handleArchive}
++                  onClick={() => setConfirmArchive(true)}
+                   title="Archiveren"
+                 />
+               )}
+             </div>
+-
+-            {/* Timeline */}
+             <RivettaPhaseTimeline description={project.description ?? ""} />
+-
+-            {/* Advance button */}
+             {nextPhase && (
+               <Button
+                 variant="tertiary"
+                 size="sm"
+                 className="w-full justify-center"
+-                onClick={handleAdvance}
++                onClick={handleAdvanceClick}
+                 disabled={advancing}
+-                prependIcon={
+-                  advancing
+-                    ? undefined
+-                    : phase === "production"
+-                      ? <Megaphone />
+-                      : <ChevronRight />
+-                }
++                prependIcon={advancing ? undefined : phase === "production" ? <Megaphone /> : <ChevronRight />}
+               >
+                 {advancing ? "..." : `Naar ${PHASES[nextPhase].shortLabel}`}
+               </Button>
+@@ -150,6 +161,30 @@ export const RivettaPhaseChip = observer(function RivettaPhaseChip({ projectId,
+         </Popover.Panel>
+       </Popover>
+ 
++      <AlertModalCore
++        isOpen={confirmAdvance}
++        handleClose={() => setConfirmAdvance(false)}
++        handleSubmit={doAdvance}
++        isSubmitting={advancing}
++        variant="primary"
++        title={`Naar ${nextPhase ? PHASES[nextPhase].label : "volgende fase"}`}
++        content={`Weet je zeker dat je "${project.name}" wilt doorschuiven?`}
++        primaryButtonText={{ default: "Doorschuiven", loading: "Bezig..." }}
++        secondaryButtonText="Annuleren"
++      />
++
++      <AlertModalCore
++        isOpen={confirmArchive}
++        handleClose={() => setConfirmArchive(false)}
++        handleSubmit={doArchive}
++        isSubmitting={false}
++        variant="danger"
++        title="Project archiveren"
++        content={`Weet je zeker dat je "${project.name}" wilt archiveren?`}
++        primaryButtonText={{ default: "Archiveren", loading: "Bezig..." }}
++        secondaryButtonText="Annuleren"
++      />
++
+       {showHandoff && (
+         <RivettaHandoffModal
+           projectName={project.name}
+diff --git a/apps/web/core/components/rivetta/phase-controls.tsx b/apps/web/core/components/rivetta/phase-controls.tsx
+index 00b318c..603009a 100644
+--- a/apps/web/core/components/rivetta/phase-controls.tsx
++++ b/apps/web/core/components/rivetta/phase-controls.tsx
+@@ -6,7 +6,8 @@ import type { IProject } from "@plane/types";
+ import { Button } from "@plane/propel/button";
+ import { IconButton } from "@plane/propel/icon-button";
+ import { TOAST_TYPE, setToast } from "@plane/propel/toast";
+-import { parsePhase, getNextPhase, encodePhase, stripPhaseMarker, PHASES } from "@/helpers/rivetta/phase";
++import { AlertModalCore } from "@plane/ui";
++import { parsePhase, getNextPhase, encodePhase, stripPhaseMarker, PHASES, type ProjectPhase } from "@/helpers/rivetta/phase";
+ import { useProject } from "@/hooks/store/use-project";
+ import { ProjectPageService } from "@/services/page/project-page.service";
+ import { RivettaPhaseBadge, RivettaPhaseTimeline } from "./phase-badge";
+@@ -14,6 +15,15 @@ import { RivettaHandoffModal } from "./handoff-modal";
+ 
+ const pageService = new ProjectPageService();
+ 
++const PHASE_PAGE_TEMPLATES: Partial<Record<ProjectPhase, string>> = {
++  design_s1:     "Design — Sample 1",
++  design_s2:     "Design — Sample 2",
++  design_s3:     "Design — Sample 3",
++  preproduction: "Pre-productie planning",
++  release:       "Release notes",
++  marketing:     "Marketing brief",
++};
++
+ interface Props {
+   project: IProject;
+ }
+@@ -21,6 +31,8 @@ interface Props {
+ export const RivettaPhaseControls = observer(function RivettaPhaseControls({ project }: Props) {
+   const [advancing, setAdvancing] = useState(false);
+   const [showHandoff, setShowHandoff] = useState(false);
++  const [confirmAdvance, setConfirmAdvance] = useState(false);
++  const [confirmArchive, setConfirmArchive] = useState(false);
+ 
+   const { workspaceSlug } = useParams<{ workspaceSlug: string }>();
+   const { updateProject } = useProject();
+@@ -29,17 +41,22 @@ export const RivettaPhaseControls = observer(function RivettaPhaseControls({ pro
+   const nextPhase = getNextPhase(phase);
+   const phaseCfg = PHASES[phase];
+ 
+-  const handleAdvance = async () => {
++  const doAdvance = async () => {
+     if (!nextPhase || !workspaceSlug) return;
+-    if (phase === "production") {
+-      setShowHandoff(true);
+-      return;
+-    }
++    setConfirmAdvance(false);
+     setAdvancing(true);
+     try {
+       const newDesc = encodePhase(nextPhase, stripPhaseMarker(project.description ?? ""));
+       await updateProject(workspaceSlug, project.id, { description: newDesc });
+-      setToast({ type: TOAST_TYPE.SUCCESS, title: "Fase bijgewerkt", message: `Project staat nu in: ${PHASES[nextPhase].label}` });
++      const templateName = PHASE_PAGE_TEMPLATES[nextPhase];
++      if (templateName) {
++        pageService.create(workspaceSlug, project.id, {
++          name: templateName,
++          description_html: "<p></p>",
++          access: 0,
++        }).catch(() => {/* best-effort */});
++      }
++      setToast({ type: TOAST_TYPE.SUCCESS, title: "Fase bijgewerkt", message: PHASES[nextPhase].label });
+     } catch {
+       setToast({ type: TOAST_TYPE.ERROR, title: "Fout", message: "Fase-overgang mislukt" });
+     } finally {
+@@ -47,9 +64,15 @@ export const RivettaPhaseControls = observer(function RivettaPhaseControls({ pro
+     }
+   };
+ 
+-  const handleArchive = async () => {
++  const handleAdvanceClick = () => {
++    if (!nextPhase) return;
++    if (phase === "production") { setShowHandoff(true); return; }
++    setConfirmAdvance(true);
++  };
++
++  const doArchive = async () => {
+     if (!workspaceSlug) return;
+-    if (!confirm(`"${project.name}" archiveren?`)) return;
++    setConfirmArchive(false);
+     try {
+       const newDesc = encodePhase("archived", stripPhaseMarker(project.description ?? ""));
+       await updateProject(workspaceSlug, project.id, { description: newDesc });
+@@ -62,7 +85,6 @@ export const RivettaPhaseControls = observer(function RivettaPhaseControls({ pro
+   const handleHandoffConfirm = async (briefing: string, checkedItems: string[]) => {
+     if (!workspaceSlug) return;
+     setAdvancing(true);
+-
+     const today = new Date().toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric" });
+     const checklistHtml = checkedItems.map((item) => `<li>✅ ${item}</li>`).join("");
+     const descriptionHtml = `
+@@ -72,9 +94,7 @@ export const RivettaPhaseControls = observer(function RivettaPhaseControls({ pro
+       <ul>${checklistHtml}</ul>
+       ${briefing.trim() ? `<h3>Toelichting voor Marketing &amp; Sales</h3><p>${briefing.replace(/\n/g, "<br/>")}</p>` : ""}
+     `.trim();
+-
+     const newDesc = encodePhase("release", stripPhaseMarker(project.description ?? ""));
+-
+     await Promise.all([
+       pageService.create(workspaceSlug, project.id, {
+         name: `Handover briefing — ${today}`,
+@@ -83,7 +103,6 @@ export const RivettaPhaseControls = observer(function RivettaPhaseControls({ pro
+       }),
+       updateProject(workspaceSlug, project.id, { description: newDesc }),
+     ]);
+-
+     setToast({ type: TOAST_TYPE.SUCCESS, title: "Handover voltooid", message: "Project staat nu in Release-fase" });
+     setShowHandoff(false);
+     setAdvancing(false);
+@@ -105,15 +124,9 @@ export const RivettaPhaseControls = observer(function RivettaPhaseControls({ pro
+               <Button
+                 variant="primary"
+                 size="sm"
+-                onClick={handleAdvance}
++                onClick={handleAdvanceClick}
+                 disabled={advancing}
+-                prependIcon={
+-                  advancing
+-                    ? undefined
+-                    : phase === "production"
+-                      ? <Megaphone />
+-                      : <ChevronRight />
+-                }
++                prependIcon={advancing ? undefined : phase === "production" ? <Megaphone /> : <ChevronRight />}
+               >
+                 {advancing ? "..." : PHASES[nextPhase].shortLabel}
+               </Button>
+@@ -123,7 +136,7 @@ export const RivettaPhaseControls = observer(function RivettaPhaseControls({ pro
+                 variant="ghost"
+                 size="sm"
+                 icon={Archive}
+-                onClick={handleArchive}
++                onClick={() => setConfirmArchive(true)}
+                 title="Archiveren"
+               />
+             )}
+@@ -133,6 +146,32 @@ export const RivettaPhaseControls = observer(function RivettaPhaseControls({ pro
+         <p className="text-11 text-placeholder">{phaseCfg.label}</p>
+       </div>
+ 
++      {/* Advance confirmation */}
++      <AlertModalCore
++        isOpen={confirmAdvance}
++        handleClose={() => setConfirmAdvance(false)}
++        handleSubmit={doAdvance}
++        isSubmitting={advancing}
++        variant="primary"
++        title={`Naar ${nextPhase ? PHASES[nextPhase].label : "volgende fase"}`}
++        content={`Weet je zeker dat je "${project.name}" wilt doorschuiven naar ${nextPhase ? PHASES[nextPhase].label : "de volgende fase"}?`}
++        primaryButtonText={{ default: "Doorschuiven", loading: "Bezig..." }}
++        secondaryButtonText="Annuleren"
++      />
++
++      {/* Archive confirmation */}
++      <AlertModalCore
++        isOpen={confirmArchive}
++        handleClose={() => setConfirmArchive(false)}
++        handleSubmit={doArchive}
++        isSubmitting={false}
++        variant="danger"
++        title="Project archiveren"
++        content={`Weet je zeker dat je "${project.name}" wilt archiveren?`}
++        primaryButtonText={{ default: "Archiveren", loading: "Bezig..." }}
++        secondaryButtonText="Annuleren"
++      />
++
+       {showHandoff && (
+         <RivettaHandoffModal
+           projectName={project.name}
+diff --git a/apps/web/core/components/rivetta/pipeline-board.tsx b/apps/web/core/components/rivetta/pipeline-board.tsx
+new file mode 100644
+index 0000000..ac17433
+--- /dev/null
++++ b/apps/web/core/components/rivetta/pipeline-board.tsx
+@@ -0,0 +1,156 @@
++import { observer } from "mobx-react";
++import { useNavigate } from "react-router";
++import { ChevronRight, ChevronDown } from "lucide-react";
++import type { IBaseLayoutsKanbanItem, IBaseLayoutsBaseGroup } from "@plane/types";
++import { cn } from "@plane/utils";
++import { TOAST_TYPE, setToast } from "@plane/propel/toast";
++import { Logo } from "@plane/propel/emoji-icon-picker";
++import { BaseKanbanLayout } from "@/components/base-layouts/kanban/layout";
++import {
++  parsePhase, encodePhase, stripPhaseMarker, PHASES, PHASE_ORDER, type ProjectPhase,
++} from "@/helpers/rivetta/phase";
++import { useProject } from "@/hooks/store/use-project";
++
++// Extend the kanban item with the fields we need
++interface PipelineProjectItem extends IBaseLayoutsKanbanItem {
++  id: string;
++  name: string;
++  identifier: string;
++  description: string;
++  logo_props: unknown;
++  member_role: unknown;
++}
++
++const BOARD_PHASES: ProjectPhase[] = PHASE_ORDER.filter((p) => p !== "archived");
++
++interface Props {
++  workspaceSlug: string;
++}
++
++export const RivettaPipelineBoard = observer(function RivettaPipelineBoard({ workspaceSlug }: Props) {
++  const navigate = useNavigate();
++  const { joinedProjectIds, getPartialProjectById, updateProject } = useProject();
++
++  // Build items map
++  const itemsMap: Record<string, PipelineProjectItem> = {};
++  const groupedIds: Record<string, string[]> = Object.fromEntries(BOARD_PHASES.map((p) => [p, []]));
++
++  (joinedProjectIds ?? []).forEach((id) => {
++    const p = getPartialProjectById(id);
++    if (!p) return;
++    const phase = parsePhase(p.description ?? "");
++    if (phase === "archived") return;
++    itemsMap[id] = {
++      id,
++      name: p.name,
++      identifier: p.identifier,
++      description: p.description ?? "",
++      logo_props: p.logo_props,
++      member_role: p.member_role,
++    };
++    if (groupedIds[phase]) groupedIds[phase].push(id);
++  });
++
++  const groups: IBaseLayoutsBaseGroup[] = BOARD_PHASES.map((phase) => ({
++    id: phase,
++    name: PHASES[phase].label,
++    count: groupedIds[phase]?.length ?? 0,
++  }));
++
++  const handleDrop = async (
++    sourceId: string,
++    _destinationId: string | null,
++    sourceGroupId: string,
++    destinationGroupId: string
++  ) => {
++    if (sourceGroupId === destinationGroupId) return;
++    const targetPhase = destinationGroupId as ProjectPhase;
++    if (targetPhase === "production") {
++      setToast({ type: TOAST_TYPE.INFO, title: "Handoff vereist", message: "Gebruik de fase-chip om naar Productie over te gaan." });
++      return;
++    }
++    try {
++      const project = getPartialProjectById(sourceId);
++      if (!project) return;
++      const newDesc = encodePhase(targetPhase, stripPhaseMarker(project.description ?? ""));
++      await updateProject(workspaceSlug, sourceId, { description: newDesc });
++      setToast({ type: TOAST_TYPE.SUCCESS, title: "Fase bijgewerkt", message: PHASES[targetPhase].label });
++    } catch {
++      setToast({ type: TOAST_TYPE.ERROR, title: "Fout", message: "Fase-overgang mislukt" });
++    }
++  };
++
++  const renderGroupHeader = ({
++    group,
++    itemCount,
++    isCollapsed,
++    onToggleGroup,
++  }: {
++    group: IBaseLayoutsBaseGroup;
++    itemCount: number;
++    isCollapsed: boolean;
++    onToggleGroup: (id: string) => void;
++  }) => {
++    const phase = group.id as ProjectPhase;
++    const cfg = PHASES[phase];
++    return (
++      <button
++        onClick={() => onToggleGroup(group.id)}
++        className="flex w-full items-center gap-2 px-2 py-1.5"
++      >
++        <span className={cn("h-2 w-2 rounded-full shrink-0", cfg.dotClass)} />
++        <span className={cn("text-11 font-semibold flex-1 text-left truncate", cfg.textClass)}>
++          {cfg.shortLabel}
++        </span>
++        <span className="text-11 text-placeholder tabular-nums">{itemCount}</span>
++        {isCollapsed
++          ? <ChevronRight className="h-3.5 w-3.5 text-placeholder" />
++          : <ChevronDown className="h-3.5 w-3.5 text-placeholder" />
++        }
++      </button>
++    );
++  };
++
++  const renderItem = (item: PipelineProjectItem) => {
++    const isMember = !!item.member_role;
++    return (
++      <div
++        onClick={() => isMember && navigate(`/${workspaceSlug}/projects/${item.id}/issues`)}
++        className={cn(
++          "flex flex-col gap-2 rounded-lg border border-subtle bg-layer-2 p-3 transition-all hover:border-strong hover:shadow-raised-100",
++          isMember ? "cursor-pointer" : "cursor-default opacity-70"
++        )}
++      >
++        <div className="flex items-start gap-2">
++          <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-layer-3">
++            <Logo logo={item.logo_props as any} size={12} />
++          </div>
++          <div className="min-w-0 flex-1">
++            <p className="truncate text-13 font-medium text-primary">{item.name}</p>
++            <p className="text-11 text-placeholder">{item.identifier}</p>
++          </div>
++        </div>
++        {stripPhaseMarker(item.description).trim() && (
++          <p className="line-clamp-2 text-11 text-tertiary">
++            {stripPhaseMarker(item.description)}
++          </p>
++        )}
++      </div>
++    );
++  };
++
++  return (
++    <BaseKanbanLayout
++      items={itemsMap}
++      groups={groups}
++      groupedItemIds={groupedIds}
++      renderItem={renderItem}
++      renderGroupHeader={renderGroupHeader}
++      enableDragDrop
++      onDrop={handleDrop}
++      showEmptyGroups
++      className="h-full"
++      groupClassName="w-64 shrink-0"
++    />
++  );
++});
+-- 
+2.43.0
+
