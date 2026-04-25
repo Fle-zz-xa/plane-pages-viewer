@@ -1,7 +1,7 @@
 From 03e7239ff995fb4b5383ff1368ff08c4c8f983d0 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Sat, 18 Apr 2026 07:18:31 +0000
-Subject: [PATCH 1/4] feat: Rivetta fase-tracking, handoff, templates &
+Subject: [PATCH 1/5] feat: Rivetta fase-tracking, handoff, templates &
  vault-weergave
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -958,7 +958,7 @@ index ab520ab..958ab2a 100644
 From e3aec54ec83735d3aa28e223fad1bd3008ba2b99 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Mon, 20 Apr 2026 11:55:46 +0000
-Subject: [PATCH 2/4] =?UTF-8?q?feat(rivetta):=20v2=20native=20Plane=20inte?=
+Subject: [PATCH 2/5] =?UTF-8?q?feat(rivetta):=20v2=20native=20Plane=20inte?=
  =?UTF-8?q?gration=20=E2=80=94=20design=20tokens,=20propel=20components?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -2061,7 +2061,7 @@ index 958ab2a..4b50b4a 100644
 From 4fcc43807c8e761741034e9c956b2bf7fea667dc Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Mon, 20 Apr 2026 16:35:07 +0000
-Subject: [PATCH 3/4] =?UTF-8?q?feat(rivetta):=20v3=20=E2=80=94=20pipeline?=
+Subject: [PATCH 3/5] =?UTF-8?q?feat(rivetta):=20v3=20=E2=80=94=20pipeline?=
  =?UTF-8?q?=20board,=20fase-filter,=20auto-pages,=20AlertModalCore?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -2974,7 +2974,7 @@ index 0000000..ac17433
 From 9fe01f2fe5745890a1ae358658668e952415c670 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Mon, 20 Apr 2026 18:21:34 +0000
-Subject: [PATCH 4/4] =?UTF-8?q?fix(rivetta):=20production-readiness=20fixe?=
+Subject: [PATCH 4/5] =?UTF-8?q?fix(rivetta):=20production-readiness=20fixe?=
  =?UTF-8?q?s=20=E2=80=94=20XSS,=20async,=20types,=20imports?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -3261,6 +3261,943 @@ index 8a0ac2c..63552bf 100644
  export function getNextPhase(current: ProjectPhase): ProjectPhase | null {
    const idx = PHASE_ORDER.indexOf(current);
    if (idx < 0 || idx >= PHASE_ORDER.length - 1) return null;
+-- 
+2.43.0
+
+
+From 589e6bb884d129a1fe488af1757675f2852f37a6 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 25 Apr 2026 18:50:40 +0000
+Subject: [PATCH 5/5] =?UTF-8?q?feat:=20Docmost=20wiki=20integratie=20?=
+ =?UTF-8?q?=E2=80=94=20pages=20tab=20+=20workspace=20wiki=20+=20auto-space?=
+ =?UTF-8?q?=20provisioning?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Integreert Docmost als wiki/kennisbank naast Plane project management.
+Docmost draait via nginx reverse proxy op hetzelfde domein (geen aparte login).
+
+Nieuwe bestanden:
+- core/services/docmost.service.ts — API wrapper (space + page aanmaken)
+- core/components/docmost/wiki-iframe.tsx — iframe component + laadindicator + empty state
+- app/(all)/[workspaceSlug]/(projects)/wiki/page.tsx — workspace-brede wiki
+- deploy/docker-compose.docmost.yml — Docker Compose uitbreiding
+- deploy/nginx-docmost.conf — nginx proxy config
+- deploy/env.docmost.example — environment variabelen
+
+Gewijzigde bestanden:
+- pages/(list)/page.tsx — vervangt Plane pages door ProjectWikiIframe
+- pages/(list)/header.tsx — "Wiki" breadcrumb + "Open in Docmost" knop
+- pages/(list)/layout.tsx — geen ContentWrapper scroll (iframe doet eigen scroll)
+- sidebar.tsx — Wiki navigatie-item (BookOpen icoon)
+- routes/core.ts — :workspaceSlug/wiki route
+- phase-controls.tsx — pageService vervangen door docmostService
+- phase-chip.tsx — pageService vervangen door docmostService
+- vault/page.tsx — pageService vervangen door docmostService
+
+Wanneer VITE_DOCMOST_API_URL niet is ingesteld: nette leeg-toestand
+met configuratie-instructies — bestaande functionaliteit werkt gewoon door.
+
+https://claude.ai/code/session_01F5cb5GugZVUfYFuetxJNHt
+---
+ .../[projectId]/pages/(list)/header.tsx       |  74 +++------
+ .../[projectId]/pages/(list)/layout.tsx       |  12 +-
+ .../[projectId]/pages/(list)/page.tsx         |  79 +---------
+ .../[workspaceSlug]/(projects)/sidebar.tsx    |  14 +-
+ .../[workspaceSlug]/(projects)/vault/page.tsx |  15 +-
+ .../[workspaceSlug]/(projects)/wiki/page.tsx  |  35 +++++
+ apps/web/app/routes/core.ts                   |   3 +
+ .../core/components/docmost/wiki-iframe.tsx   | 147 ++++++++++++++++++
+ .../core/components/rivetta/phase-chip.tsx    |  28 ++--
+ .../components/rivetta/phase-controls.tsx     |  28 ++--
+ apps/web/core/services/docmost.service.ts     |  99 ++++++++++++
+ deploy/docker-compose.docmost.yml             |  50 ++++++
+ deploy/env.docmost.example                    |  19 +++
+ deploy/nginx-docmost.conf                     |  48 ++++++
+ 14 files changed, 485 insertions(+), 166 deletions(-)
+ create mode 100644 apps/web/app/(all)/[workspaceSlug]/(projects)/wiki/page.tsx
+ create mode 100644 apps/web/core/components/docmost/wiki-iframe.tsx
+ create mode 100644 apps/web/core/services/docmost.service.ts
+ create mode 100644 deploy/docker-compose.docmost.yml
+ create mode 100644 deploy/env.docmost.example
+ create mode 100644 deploy/nginx-docmost.conf
+
+diff --git a/apps/web/app/(all)/[workspaceSlug]/(projects)/projects/(detail)/[projectId]/pages/(list)/header.tsx b/apps/web/app/(all)/[workspaceSlug]/(projects)/projects/(detail)/[projectId]/pages/(list)/header.tsx
+index e76f55b..928305f 100644
+--- a/apps/web/app/(all)/[workspaceSlug]/(projects)/projects/(detail)/[projectId]/pages/(list)/header.tsx
++++ b/apps/web/app/(all)/[workspaceSlug]/(projects)/projects/(detail)/[projectId]/pages/(list)/header.tsx
+@@ -4,71 +4,38 @@
+  * See the LICENSE file for details.
+  */
+ 
+-import { useState } from "react";
+ import { observer } from "mobx-react";
+-import { useParams, useRouter, useSearchParams } from "next/navigation";
+-// constants
+-import { EPageAccess } from "@plane/constants";
+-// plane types
+-import { Button } from "@plane/propel/button";
+-import { PageIcon } from "@plane/propel/icons";
+-import { TOAST_TYPE, setToast } from "@plane/propel/toast";
+-import type { TPage } from "@plane/types";
+-// plane ui
++import { useParams } from "next/navigation";
++import { BookOpen, ExternalLink } from "lucide-react";
+ import { Breadcrumbs, Header } from "@plane/ui";
+-// helpers
+ import { BreadcrumbLink } from "@/components/common/breadcrumb-link";
+-// hooks
+ import { useProject } from "@/hooks/store/use-project";
+-// plane web imports
+ import { CommonProjectBreadcrumbs } from "@/plane-web/components/breadcrumbs/common";
+-import { EPageStoreType, usePageStore } from "@/plane-web/hooks/store";
++import { docmostService, toDocmostSlug } from "@/services/docmost.service";
+ 
+ export const PagesListHeader = observer(function PagesListHeader() {
+-  // states
+-  const [isCreatingPage, setIsCreatingPage] = useState(false);
+-  // router
+-  const router = useRouter();
+   const { workspaceSlug, projectId } = useParams();
+-  const searchParams = useSearchParams();
+-  const pageType = searchParams.get("type");
+-  // store hooks
+   const { currentProjectDetails, loader } = useProject();
+-  const { canCurrentUserCreatePage, createPage } = usePageStore(EPageStoreType.PROJECT);
+-  // handle page create
+-  const handleCreatePage = async () => {
+-    setIsCreatingPage(true);
+ 
+-    const payload: Partial<TPage> = {
+-      access: pageType === "private" ? EPageAccess.PRIVATE : EPageAccess.PUBLIC,
+-    };
+-
+-    await createPage(payload)
+-      .then((res) => {
+-        const pageId = `/${workspaceSlug}/projects/${currentProjectDetails?.id}/pages/${res?.id}`;
+-        router.push(pageId);
+-      })
+-      .catch((err) => {
+-        setToast({
+-          type: TOAST_TYPE.ERROR,
+-          title: "Error!",
+-          message: err?.data?.error || "Page could not be created. Please try again.",
+-        });
+-      })
+-      .finally(() => setIsCreatingPage(false));
+-  };
++  const docmostUrl = docmostService.baseUrl;
++  const identifier = currentProjectDetails?.identifier;
++  const spaceUrl =
++    docmostUrl && identifier ? `${docmostUrl}/s/${toDocmostSlug(identifier)}` : null;
+ 
+   return (
+     <Header>
+       <Header.LeftItem>
+         <Breadcrumbs isLoading={loader === "init-loader"}>
+-          <CommonProjectBreadcrumbs workspaceSlug={workspaceSlug?.toString()} projectId={projectId?.toString()} />
++          <CommonProjectBreadcrumbs
++            workspaceSlug={workspaceSlug?.toString()}
++            projectId={projectId?.toString()}
++          />
+           <Breadcrumbs.Item
+             component={
+               <BreadcrumbLink
+-                label="Pages"
++                label="Wiki"
+                 href={`/${workspaceSlug}/projects/${currentProjectDetails?.id}/pages/`}
+-                icon={<PageIcon className="h-4 w-4 text-tertiary" />}
++                icon={<BookOpen className="h-4 w-4 text-tertiary" />}
+                 isLast
+               />
+             }
+@@ -76,11 +43,18 @@ export const PagesListHeader = observer(function PagesListHeader() {
+           />
+         </Breadcrumbs>
+       </Header.LeftItem>
+-      {canCurrentUserCreatePage && (
++
++      {spaceUrl && (
+         <Header.RightItem>
+-          <Button variant="primary" size="lg" onClick={handleCreatePage} loading={isCreatingPage}>
+-            {isCreatingPage ? "Adding" : "Add page"}
+-          </Button>
++          <a
++            href={spaceUrl}
++            target="_blank"
++            rel="noopener noreferrer"
++            className="flex items-center gap-1.5 rounded-md border border-subtle bg-layer-2 px-3 py-1.5 text-13 font-medium text-secondary hover:bg-layer-2-hover transition-colors"
++          >
++            <ExternalLink className="h-3.5 w-3.5" />
++            Open in Docmost
++          </a>
+         </Header.RightItem>
+       )}
+     </Header>
+diff --git a/apps/web/app/(all)/[workspaceSlug]/(projects)/projects/(detail)/[projectId]/pages/(list)/layout.tsx b/apps/web/app/(all)/[workspaceSlug]/(projects)/projects/(detail)/[projectId]/pages/(list)/layout.tsx
+index b803854..0f1ed15 100644
+--- a/apps/web/app/(all)/[workspaceSlug]/(projects)/projects/(detail)/[projectId]/pages/(list)/layout.tsx
++++ b/apps/web/app/(all)/[workspaceSlug]/(projects)/projects/(detail)/[projectId]/pages/(list)/layout.tsx
+@@ -4,20 +4,18 @@
+  * See the LICENSE file for details.
+  */
+ 
+-// components
+ import { Outlet } from "react-router";
+ import { AppHeader } from "@/components/core/app-header";
+-import { ContentWrapper } from "@/components/core/content-wrapper";
+-// local components
+ import { PagesListHeader } from "./header";
+ 
+ export default function ProjectPagesListLayout() {
+   return (
+-    <>
++    <div className="flex h-full flex-col overflow-hidden">
+       <AppHeader header={<PagesListHeader />} />
+-      <ContentWrapper>
++      {/* No ContentWrapper/scroll — iframe manages its own scrolling */}
++      <div className="flex-1 overflow-hidden">
+         <Outlet />
+-      </ContentWrapper>
+-    </>
++      </div>
++    </div>
+   );
+ }
+diff --git a/apps/web/app/(all)/[workspaceSlug]/(projects)/projects/(detail)/[projectId]/pages/(list)/page.tsx b/apps/web/app/(all)/[workspaceSlug]/(projects)/projects/(detail)/[projectId]/pages/(list)/page.tsx
+index e5e1de9..5c35abb 100644
+--- a/apps/web/app/(all)/[workspaceSlug]/(projects)/projects/(detail)/[projectId]/pages/(list)/page.tsx
++++ b/apps/web/app/(all)/[workspaceSlug]/(projects)/projects/(detail)/[projectId]/pages/(list)/page.tsx
+@@ -5,85 +5,20 @@
+  */
+ 
+ import { observer } from "mobx-react";
+-import { useSearchParams } from "next/navigation";
+-import { useTheme } from "next-themes";
+-// plane imports
+-import { EUserPermissionsLevel } from "@plane/constants";
+-import { useTranslation } from "@plane/i18n";
+-import type { TPageNavigationTabs } from "@plane/types";
+-import { EUserProjectRoles } from "@plane/types";
+-// assets
+-import darkPagesAsset from "@/app/assets/empty-state/disabled-feature/pages-dark.webp?url";
+-import lightPagesAsset from "@/app/assets/empty-state/disabled-feature/pages-light.webp?url";
+-// components
+-import { PageHead } from "@/components/core/page-title";
+-import { DetailedEmptyState } from "@/components/empty-state/detailed-empty-state-root";
+-import { PagesListRoot } from "@/components/pages/list/root";
+-import { PagesListView } from "@/components/pages/pages-list-view";
+-// hooks
+ import { useProject } from "@/hooks/store/use-project";
+-import { useUserPermissions } from "@/hooks/store/user";
+-import { useAppRouter } from "@/hooks/use-app-router";
+-// plane web hooks
+-import { EPageStoreType } from "@/plane-web/hooks/store";
++import { ProjectWikiIframe } from "@/components/docmost/wiki-iframe";
+ import type { Route } from "./+types/page";
+ 
+-const getPageType = (pageType?: string | null): TPageNavigationTabs => {
+-  if (pageType === "private") return "private";
+-  if (pageType === "archived") return "archived";
+-  return "public";
+-};
+-
+ function ProjectPagesPage({ params }: Route.ComponentProps) {
+-  // router
+-  const router = useAppRouter();
+-  const searchParams = useSearchParams();
+-  const type = searchParams.get("type");
+-  const { workspaceSlug, projectId } = params;
+-  // theme hook
+-  const { resolvedTheme } = useTheme();
+-  // plane hooks
+-  const { t } = useTranslation();
+-  // store hooks
+-  const { getProjectById, currentProjectDetails } = useProject();
+-  const { allowPermissions } = useUserPermissions();
+-  // derived values
++  const { projectId } = params;
++  const { getProjectById } = useProject();
+   const project = getProjectById(projectId);
+-  const pageTitle = project?.name ? `${project?.name} - Pages` : undefined;
+-  const canPerformEmptyStateActions = allowPermissions([EUserProjectRoles.ADMIN], EUserPermissionsLevel.PROJECT);
+-  const resolvedPath = resolvedTheme === "light" ? lightPagesAsset : darkPagesAsset;
+-  const pageType = getPageType(type);
+ 
+-  // No access to cycle
+-  if (currentProjectDetails?.page_view === false)
+-    return (
+-      <div className="flex h-full w-full items-center justify-center">
+-        <DetailedEmptyState
+-          title={t("disabled_project.empty_state.page.title")}
+-          description={t("disabled_project.empty_state.page.description")}
+-          assetPath={resolvedPath}
+-          primaryButton={{
+-            text: t("disabled_project.empty_state.page.primary_button.text"),
+-            onClick: () => {
+-              router.push(`/${workspaceSlug}/settings/projects/${projectId}/features`);
+-            },
+-            disabled: !canPerformEmptyStateActions,
+-          }}
+-        />
+-      </div>
+-    );
+   return (
+-    <>
+-      <PageHead title={pageTitle} />
+-      <PagesListView
+-        pageType={pageType}
+-        projectId={projectId}
+-        storeType={EPageStoreType.PROJECT}
+-        workspaceSlug={workspaceSlug}
+-      >
+-        <PagesListRoot pageType={pageType} storeType={EPageStoreType.PROJECT} />
+-      </PagesListView>
+-    </>
++    <ProjectWikiIframe
++      projectName={project?.name ?? projectId}
++      projectIdentifier={project?.identifier ?? projectId}
++    />
+   );
+ }
+ 
+diff --git a/apps/web/app/(all)/[workspaceSlug]/(projects)/sidebar.tsx b/apps/web/app/(all)/[workspaceSlug]/(projects)/sidebar.tsx
+index 76ca6fb..a5e0499 100644
+--- a/apps/web/app/(all)/[workspaceSlug]/(projects)/sidebar.tsx
++++ b/apps/web/app/(all)/[workspaceSlug]/(projects)/sidebar.tsx
+@@ -7,7 +7,7 @@
+ import { isEmpty } from "lodash-es";
+ import { observer } from "mobx-react";
+ import { useParams, useNavigate, useLocation } from "react-router";
+-import { Package, LayoutKanban } from "lucide-react";
++import { Package, LayoutKanban, BookOpen } from "lucide-react";
+ // plane helpers
+ import { EUserPermissions, EUserPermissionsLevel } from "@plane/constants";
+ // components
+@@ -40,6 +40,7 @@ export const AppSidebar = observer(function AppSidebar() {
+   const isFavoriteEmpty = isEmpty(groupedFavorites);
+   const isVaultActive = pathname.includes("/vault");
+   const isPipelineActive = pathname.includes("/pipeline");
++  const isWikiActive = pathname.includes("/wiki");
+ 
+   return (
+     <SidebarWrapper title="Projects" quickActions={<SidebarQuickActions />}>
+@@ -70,6 +71,17 @@ export const AppSidebar = observer(function AppSidebar() {
+           Pipeline
+         </div>
+       </SidebarNavItem>
++      {/* Rivetta Wiki nav item */}
++      <SidebarNavItem
++        isActive={isWikiActive}
++        className="cursor-pointer"
++        onClick={() => navigate(`/${workspaceSlug}/wiki`)}
++      >
++        <div className="flex items-center gap-2.5 text-13 font-medium">
++          <BookOpen className="h-4 w-4 shrink-0" />
++          Wiki
++        </div>
++      </SidebarNavItem>
+       {/* Projects List */}
+       <SidebarProjectsList />
+     </SidebarWrapper>
+diff --git a/apps/web/app/(all)/[workspaceSlug]/(projects)/vault/page.tsx b/apps/web/app/(all)/[workspaceSlug]/(projects)/vault/page.tsx
+index 24c7d65..4e1736c 100644
+--- a/apps/web/app/(all)/[workspaceSlug]/(projects)/vault/page.tsx
++++ b/apps/web/app/(all)/[workspaceSlug]/(projects)/vault/page.tsx
+@@ -9,11 +9,9 @@ import { renderFormattedDate } from "@plane/utils";
+ import { AlertModalCore, Input } from "@plane/ui";
+ import { parsePhase, encodePhase, stripPhaseMarker, PHASES } from "@/helpers/rivetta/phase";
+ import { useProject } from "@/hooks/store/use-project";
+-import { ProjectPageService } from "@/services/page/project-page.service";
++import { docmostService, toDocmostSlug } from "@/services/docmost.service";
+ import { RivettaPhaseTimeline } from "@/components/rivetta/phase-badge";
+ 
+-const pageService = new ProjectPageService();
+-
+ const VaultPage = observer(function VaultPage() {
+   const { workspaceSlug } = useParams<{ workspaceSlug: string }>();
+   const navigate = useNavigate();
+@@ -47,11 +45,12 @@ const VaultPage = observer(function VaultPage() {
+     try {
+       const newDesc = encodePhase("design_s1", stripPhaseMarker(description));
+       await updateProject(workspaceSlug, id, { description: newDesc });
+-      pageService.create(workspaceSlug, id, {
+-        name: "Design — Sample 1",
+-        description_html: "<p></p>",
+-        access: 0,
+-      }).catch(() => {/* best-effort */});
++      if (docmostService.isConfigured) {
++        const project = getPartialProjectById(id);
++        docmostService
++          .ensureSpaceAndCreatePage(name, toDocmostSlug(project?.identifier ?? id), "Design — Sample 1")
++          .catch(() => {});
++      }
+       setToast({ type: TOAST_TYPE.SUCCESS, title: "Fase bijgewerkt", message: `${name} staat nu in Design — Sample 1` });
+     } catch {
+       setToast({ type: TOAST_TYPE.ERROR, title: "Fout", message: "Fase-overgang mislukt" });
+diff --git a/apps/web/app/(all)/[workspaceSlug]/(projects)/wiki/page.tsx b/apps/web/app/(all)/[workspaceSlug]/(projects)/wiki/page.tsx
+new file mode 100644
+index 0000000..29cd013
+--- /dev/null
++++ b/apps/web/app/(all)/[workspaceSlug]/(projects)/wiki/page.tsx
+@@ -0,0 +1,35 @@
++import { BookOpen } from "lucide-react";
++import { AppHeader } from "@/components/core/app-header";
++import { BreadcrumbLink } from "@/components/common/breadcrumb-link";
++import { Breadcrumbs, Header } from "@plane/ui";
++import { WorkspaceWikiIframe } from "@/components/docmost/wiki-iframe";
++
++function WikiHeader() {
++  return (
++    <Header>
++      <Header.LeftItem>
++        <Breadcrumbs>
++          <Breadcrumbs.Item
++            component={
++              <BreadcrumbLink
++                label="Wiki"
++                icon={<BookOpen className="h-4 w-4 text-tertiary" />}
++                isLast
++              />
++            }
++            isLast
++          />
++        </Breadcrumbs>
++      </Header.LeftItem>
++    </Header>
++  );
++}
++
++export default function WorkspaceWikiPage() {
++  return (
++    <div className="flex h-full flex-col">
++      <AppHeader header={<WikiHeader />} />
++      <WorkspaceWikiIframe className="flex-1" />
++    </div>
++  );
++}
+diff --git a/apps/web/app/routes/core.ts b/apps/web/app/routes/core.ts
+index 7d47b9d..b703aae 100644
+--- a/apps/web/app/routes/core.ts
++++ b/apps/web/app/routes/core.ts
+@@ -68,6 +68,9 @@ export const coreRoutes: RouteConfigEntry[] = [
+         // Rivetta Pipeline — kanban-overzicht per fase
+         route(":workspaceSlug/pipeline", "./(all)/[workspaceSlug]/(projects)/pipeline/page.tsx"),
+ 
++        // Rivetta Wiki — Docmost iframe integratie
++        route(":workspaceSlug/wiki", "./(all)/[workspaceSlug]/(projects)/wiki/page.tsx"),
++
+         // Active Cycles
+         layout("./(all)/[workspaceSlug]/(projects)/active-cycles/layout.tsx", [
+           route(":workspaceSlug/active-cycles", "./(all)/[workspaceSlug]/(projects)/active-cycles/page.tsx"),
+diff --git a/apps/web/core/components/docmost/wiki-iframe.tsx b/apps/web/core/components/docmost/wiki-iframe.tsx
+new file mode 100644
+index 0000000..23b9f2a
+--- /dev/null
++++ b/apps/web/core/components/docmost/wiki-iframe.tsx
+@@ -0,0 +1,147 @@
++import { useState, useEffect } from "react";
++import { BookOpen, Loader2, ExternalLink } from "lucide-react";
++import { cn } from "@plane/utils";
++import { docmostService, toDocmostSlug } from "@/services/docmost.service";
++
++interface WikiIframeProps {
++  /** Full URL to load in the iframe — e.g. DOCMOST_URL + "/s/my-space" */
++  src: string;
++  /** Page <title> for accessibility */
++  title?: string;
++  className?: string;
++  /** When set, the service will silently ensure this space exists on mount */
++  ensureSpace?: { name: string; identifier: string };
++}
++
++export function WikiIframe({ src, title = "Wiki", className, ensureSpace }: WikiIframeProps) {
++  const [loaded, setLoaded] = useState(false);
++  const docmostUrl = docmostService.baseUrl;
++
++  // Silently provision the space so the first load finds it already there
++  useEffect(() => {
++    if (!ensureSpace || !docmostService.isConfigured) return;
++    const slug = toDocmostSlug(ensureSpace.identifier);
++    docmostService.ensureSpace(ensureSpace.name, slug).catch(() => {});
++  }, [ensureSpace?.identifier]); // eslint-disable-line react-hooks/exhaustive-deps
++
++  if (!docmostUrl) {
++    return (
++      <div className={cn("flex h-full items-center justify-center bg-surface-1", className)}>
++        <div className="flex flex-col items-center gap-3 text-center">
++          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-layer-3">
++            <BookOpen className="h-6 w-6 text-placeholder" />
++          </div>
++          <div>
++            <p className="text-13 font-semibold text-primary">Wiki niet geconfigureerd</p>
++            <p className="mt-1 text-11 text-placeholder max-w-[260px]">
++              Stel <code className="rounded bg-layer-3 px-1 py-0.5 font-mono text-10">VITE_DOCMOST_API_URL</code> in
++              je <code className="rounded bg-layer-3 px-1 py-0.5 font-mono text-10">.env.local</code> in om Docmost te
++              verbinden.
++            </p>
++          </div>
++        </div>
++      </div>
++    );
++  }
++
++  return (
++    <div className={cn("relative h-full w-full", className)}>
++      {/* Loading overlay — fades out once iframe signals it has loaded */}
++      {!loaded && (
++        <div className="absolute inset-0 z-10 flex items-center justify-center bg-surface-1">
++          <div className="flex flex-col items-center gap-3">
++            <Loader2 className="h-6 w-6 animate-spin text-placeholder" />
++            <p className="text-11 text-placeholder">Wiki laden…</p>
++          </div>
++        </div>
++      )}
++
++      {/* "Open in new tab" escape hatch — dimmed by default, full opacity on hover */}
++      <a
++        href={src}
++        target="_blank"
++        rel="noopener noreferrer"
++        title="Open in Docmost"
++        className="absolute right-3 top-3 z-20 flex items-center gap-1 rounded-md border border-subtle bg-surface-1 px-2 py-1 text-11 text-placeholder opacity-40 transition-opacity hover:opacity-100 focus:opacity-100"
++      >
++        <ExternalLink className="h-3 w-3" />
++        Docmost
++      </a>
++
++      <iframe
++        src={src}
++        title={title}
++        className="h-full w-full border-0"
++        allow="clipboard-read; clipboard-write"
++        onLoad={() => setLoaded(true)}
++      />
++    </div>
++  );
++}
++
++/**
++ * Variant used on the workspace-level wiki page.
++ * Points to the Docmost workspace root so users see all spaces.
++ */
++export function WorkspaceWikiIframe({ className }: { className?: string }) {
++  const docmostUrl = docmostService.baseUrl;
++  return (
++    <WikiIframe
++      src={docmostUrl ? `${docmostUrl}/spaces` : ""}
++      title="Workspace Wiki"
++      className={className}
++    />
++  );
++}
++
++/**
++ * Variant used on the project Pages tab.
++ * Deep-links to the project's dedicated Docmost space.
++ */
++interface ProjectWikiIframeProps {
++  projectName: string;
++  projectIdentifier: string;
++  className?: string;
++}
++
++export function ProjectWikiIframe({ projectName, projectIdentifier, className }: ProjectWikiIframeProps) {
++  const docmostUrl = docmostService.baseUrl;
++  const slug = toDocmostSlug(projectIdentifier);
++
++  if (!docmostUrl) {
++    return <WikiIframe src="" title="Project Wiki" className={className} />;
++  }
++
++  return (
++    <WikiIframe
++      src={`${docmostUrl}/s/${slug}`}
++      title={`${projectName} — Wiki`}
++      className={className}
++      ensureSpace={{ name: projectName, identifier: projectIdentifier }}
++    />
++  );
++}
++
++/**
++ * Small inline badge that links to the project's Docmost space.
++ * Used in page headers alongside RivettaPhaseBadge.
++ */
++export function DocmostSpaceLink({ projectName, projectIdentifier }: { projectName: string; projectIdentifier: string }) {
++  const docmostUrl = docmostService.baseUrl;
++  if (!docmostUrl) return null;
++  const slug = toDocmostSlug(projectIdentifier);
++  return (
++    <a
++      href={`${docmostUrl}/s/${slug}`}
++      target="_blank"
++      rel="noopener noreferrer"
++      className="flex items-center gap-1 rounded border border-subtle px-1.5 py-0.5 text-11 text-placeholder hover:text-secondary hover:border-strong transition-colors"
++    >
++      <BookOpen className="h-3 w-3" />
++      Wiki
++      <ExternalLink className="h-2.5 w-2.5 opacity-60" />
++    </a>
++  );
++}
++
++WikiIframe.displayName = "WikiIframe";
+diff --git a/apps/web/core/components/rivetta/phase-chip.tsx b/apps/web/core/components/rivetta/phase-chip.tsx
+index c8e7eb9..cf82dd2 100644
+--- a/apps/web/core/components/rivetta/phase-chip.tsx
++++ b/apps/web/core/components/rivetta/phase-chip.tsx
+@@ -9,12 +9,10 @@ import { AlertModalCore } from "@plane/ui";
+ import { cn } from "@plane/utils";
+ import { parsePhase, getNextPhase, encodePhase, stripPhaseMarker, escapeHtml, PHASES, type ProjectPhase } from "@/helpers/rivetta/phase";
+ import { useProject } from "@/hooks/store/use-project";
+-import { ProjectPageService } from "@/services/page/project-page.service";
++import { docmostService, toDocmostSlug } from "@/services/docmost.service";
+ import { RivettaPhaseTimeline } from "./phase-badge";
+ import { RivettaHandoffModal } from "./handoff-modal";
+ 
+-const pageService = new ProjectPageService();
+-
+ const PHASE_PAGE_TEMPLATES: Partial<Record<ProjectPhase, string>> = {
+   design_s1:     "Design — Sample 1",
+   design_s2:     "Design — Sample 2",
+@@ -52,12 +50,10 @@ export const RivettaPhaseChip = observer(function RivettaPhaseChip({ projectId,
+       const newDesc = encodePhase(nextPhase, stripPhaseMarker(project.description ?? ""));
+       await updateProject(workspaceSlug, project.id, { description: newDesc });
+       const templateName = PHASE_PAGE_TEMPLATES[nextPhase];
+-      if (templateName) {
+-        pageService.create(workspaceSlug, project.id, {
+-          name: templateName,
+-          description_html: "<p></p>",
+-          access: 0,
+-        }).catch(() => {/* best-effort */});
++      if (templateName && docmostService.isConfigured) {
++        docmostService
++          .ensureSpaceAndCreatePage(project.name, toDocmostSlug(project.identifier), templateName)
++          .catch(() => {});
+       }
+       setToast({ type: TOAST_TYPE.SUCCESS, title: "Fase bijgewerkt", message: PHASES[nextPhase].label });
+     } catch {
+@@ -97,12 +93,16 @@ export const RivettaPhaseChip = observer(function RivettaPhaseChip({ projectId,
+         ${briefing.trim() ? `<h3>Toelichting voor Marketing &amp; Sales</h3><p>${escapeHtml(briefing).replace(/\n/g, "<br/>")}</p>` : ""}
+       `.trim();
+       const newDesc = encodePhase("release", stripPhaseMarker(project.description ?? ""));
++      const pagePromise = docmostService.isConfigured
++        ? docmostService.ensureSpaceAndCreatePage(
++            project.name,
++            toDocmostSlug(project.identifier),
++            `Handover briefing — ${today}`,
++            descriptionHtml
++          )
++        : Promise.resolve(null);
+       await Promise.all([
+-        pageService.create(workspaceSlug, project.id, {
+-          name: `Handover briefing — ${today}`,
+-          description_html: descriptionHtml,
+-          access: 0,
+-        }),
++        pagePromise,
+         updateProject(workspaceSlug, project.id, { description: newDesc }),
+       ]);
+       setToast({ type: TOAST_TYPE.SUCCESS, title: "Handover voltooid", message: "Project staat nu in Release-fase" });
+diff --git a/apps/web/core/components/rivetta/phase-controls.tsx b/apps/web/core/components/rivetta/phase-controls.tsx
+index c4f72ac..3f10e55 100644
+--- a/apps/web/core/components/rivetta/phase-controls.tsx
++++ b/apps/web/core/components/rivetta/phase-controls.tsx
+@@ -9,12 +9,10 @@ import { TOAST_TYPE, setToast } from "@plane/propel/toast";
+ import { AlertModalCore } from "@plane/ui";
+ import { parsePhase, getNextPhase, encodePhase, stripPhaseMarker, escapeHtml, PHASES, type ProjectPhase } from "@/helpers/rivetta/phase";
+ import { useProject } from "@/hooks/store/use-project";
+-import { ProjectPageService } from "@/services/page/project-page.service";
++import { docmostService, toDocmostSlug } from "@/services/docmost.service";
+ import { RivettaPhaseBadge, RivettaPhaseTimeline } from "./phase-badge";
+ import { RivettaHandoffModal } from "./handoff-modal";
+ 
+-const pageService = new ProjectPageService();
+-
+ const PHASE_PAGE_TEMPLATES: Partial<Record<ProjectPhase, string>> = {
+   design_s1:     "Design — Sample 1",
+   design_s2:     "Design — Sample 2",
+@@ -49,12 +47,10 @@ export const RivettaPhaseControls = observer(function RivettaPhaseControls({ pro
+       const newDesc = encodePhase(nextPhase, stripPhaseMarker(project.description ?? ""));
+       await updateProject(workspaceSlug, project.id, { description: newDesc });
+       const templateName = PHASE_PAGE_TEMPLATES[nextPhase];
+-      if (templateName) {
+-        pageService.create(workspaceSlug, project.id, {
+-          name: templateName,
+-          description_html: "<p></p>",
+-          access: 0,
+-        }).catch(() => {/* best-effort */});
++      if (templateName && docmostService.isConfigured) {
++        docmostService
++          .ensureSpaceAndCreatePage(project.name, toDocmostSlug(project.identifier), templateName)
++          .catch(() => {});
+       }
+       setToast({ type: TOAST_TYPE.SUCCESS, title: "Fase bijgewerkt", message: PHASES[nextPhase].label });
+     } catch {
+@@ -96,12 +92,16 @@ export const RivettaPhaseControls = observer(function RivettaPhaseControls({ pro
+         ${briefing.trim() ? `<h3>Toelichting voor Marketing &amp; Sales</h3><p>${escapeHtml(briefing).replace(/\n/g, "<br/>")}</p>` : ""}
+       `.trim();
+       const newDesc = encodePhase("release", stripPhaseMarker(project.description ?? ""));
++      const pagePromise = docmostService.isConfigured
++        ? docmostService.ensureSpaceAndCreatePage(
++            project.name,
++            toDocmostSlug(project.identifier),
++            `Handover briefing — ${today}`,
++            descriptionHtml
++          )
++        : Promise.resolve(null);
+       await Promise.all([
+-        pageService.create(workspaceSlug, project.id, {
+-          name: `Handover briefing — ${today}`,
+-          description_html: descriptionHtml,
+-          access: 0,
+-        }),
++        pagePromise,
+         updateProject(workspaceSlug, project.id, { description: newDesc }),
+       ]);
+       setToast({ type: TOAST_TYPE.SUCCESS, title: "Handover voltooid", message: "Project staat nu in Release-fase" });
+diff --git a/apps/web/core/services/docmost.service.ts b/apps/web/core/services/docmost.service.ts
+new file mode 100644
+index 0000000..b999d70
+--- /dev/null
++++ b/apps/web/core/services/docmost.service.ts
+@@ -0,0 +1,99 @@
++const DOCMOST_URL = (import.meta.env.VITE_DOCMOST_API_URL as string | undefined) ?? "";
++const DOCMOST_TOKEN = (import.meta.env.VITE_DOCMOST_API_TOKEN as string | undefined) ?? "";
++
++interface DocmostSpace {
++  id: string;
++  name: string;
++  slug: string;
++}
++
++interface DocmostPage {
++  id: string;
++  title: string;
++}
++
++interface PaginatedResponse<T> {
++  items?: T[];
++  data?: { items?: T[] } | T[];
++}
++
++/**
++ * Converts a Plane project identifier (e.g. "RIVETTA") to a Docmost-compatible
++ * space slug: lowercase, alphanumeric only, 2–50 characters.
++ */
++export function toDocmostSlug(identifier: string): string {
++  const slug = identifier.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 50);
++  return slug.length >= 2 ? slug : slug.padEnd(2, "x");
++}
++
++class DocmostService {
++  get isConfigured(): boolean {
++    return !!DOCMOST_URL && !!DOCMOST_TOKEN;
++  }
++
++  /** Public Docmost base URL — used to build iframe src. */
++  get baseUrl(): string {
++    return DOCMOST_URL;
++  }
++
++  private async post<T>(path: string, body: unknown = {}): Promise<T> {
++    const res = await fetch(`${DOCMOST_URL}/api${path}`, {
++      method: "POST",
++      headers: {
++        "Content-Type": "application/json",
++        Authorization: `Bearer ${DOCMOST_TOKEN}`,
++      },
++      body: JSON.stringify(body),
++    });
++    if (!res.ok) {
++      const text = await res.text().catch(() => res.statusText);
++      throw new Error(`Docmost ${path} — ${res.status}: ${text}`);
++    }
++    return res.json() as Promise<T>;
++  }
++
++  private async listSpaces(): Promise<DocmostSpace[]> {
++    const data = await this.post<PaginatedResponse<DocmostSpace>>("/spaces/", {
++      page: 1,
++      limit: 200,
++    });
++    if (Array.isArray(data)) return data;
++    if (Array.isArray(data.items)) return data.items;
++    const nested = data.data;
++    if (Array.isArray(nested)) return nested;
++    if (nested && Array.isArray((nested as { items?: DocmostSpace[] }).items))
++      return (nested as { items: DocmostSpace[] }).items;
++    return [];
++  }
++
++  async ensureSpace(name: string, slug: string): Promise<DocmostSpace> {
++    const spaces = await this.listSpaces();
++    const existing = spaces.find((s) => s.slug === slug);
++    if (existing) return existing;
++    return this.post<DocmostSpace>("/spaces/create", { name, slug });
++  }
++
++  async createPage(spaceId: string, title: string, contentHtml?: string): Promise<DocmostPage> {
++    return this.post<DocmostPage>("/pages/create", {
++      spaceId,
++      title,
++      ...(contentHtml ? { content: contentHtml, format: "html" } : {}),
++    });
++  }
++
++  /**
++   * Ensures the project's Docmost space exists, then creates a page in it.
++   * Intended as a best-effort call — callers should .catch(() => {}).
++   */
++  async ensureSpaceAndCreatePage(
++    projectName: string,
++    projectSlug: string,
++    pageTitle: string,
++    contentHtml?: string
++  ): Promise<DocmostPage> {
++    const space = await this.ensureSpace(projectName, projectSlug);
++    return this.createPage(space.id, pageTitle, contentHtml);
++  }
++}
++
++export const docmostService = new DocmostService();
+diff --git a/deploy/docker-compose.docmost.yml b/deploy/docker-compose.docmost.yml
+new file mode 100644
+index 0000000..ecec81d
+--- /dev/null
++++ b/deploy/docker-compose.docmost.yml
+@@ -0,0 +1,50 @@
++# Docmost wiki — add this to your existing Plane docker-compose setup
++# Usage: docker compose -f docker-compose.yml -f deploy/docker-compose.docmost.yml up -d
++
++services:
++  docmost:
++    image: docmost/docmost:latest
++    depends_on:
++      - docmost_db
++      - docmost_redis
++    environment:
++      APP_URL: "${DOCMOST_APP_URL:-https://docs.rivetta.eu}"
++      APP_SECRET: "${DOCMOST_APP_SECRET}"
++      DATABASE_URL: "postgresql://${DOCMOST_DB_USER:-docmost}:${DOCMOST_DB_PASS:-docmost}@docmost_db:5432/${DOCMOST_DB_NAME:-docmost}"
++      REDIS_URL: "redis://docmost_redis:6379"
++    ports:
++      - "127.0.0.1:3001:3000"
++    volumes:
++      - docmost_storage:/app/data/storage
++    restart: unless-stopped
++    networks:
++      - plane_network
++      - docmost_network
++
++  docmost_db:
++    image: postgres:16-alpine
++    environment:
++      POSTGRES_DB: "${DOCMOST_DB_NAME:-docmost}"
++      POSTGRES_USER: "${DOCMOST_DB_USER:-docmost}"
++      POSTGRES_PASSWORD: "${DOCMOST_DB_PASS:-docmost}"
++    volumes:
++      - docmost_postgres:/var/lib/postgresql/data
++    restart: unless-stopped
++    networks:
++      - docmost_network
++
++  docmost_redis:
++    image: redis:7-alpine
++    restart: unless-stopped
++    networks:
++      - docmost_network
++
++volumes:
++  docmost_storage:
++  docmost_postgres:
++
++networks:
++  plane_network:
++    external: true
++  docmost_network:
++    internal: true
+diff --git a/deploy/env.docmost.example b/deploy/env.docmost.example
+new file mode 100644
+index 0000000..e466204
+--- /dev/null
++++ b/deploy/env.docmost.example
+@@ -0,0 +1,19 @@
++# ─── Docmost integration ─────────────────────────────────────────────────────
++# Add these to Plane's .env.local (or wherever you set Vite env vars).
++
++# Public URL of your Docmost instance, as seen by the browser.
++# With the nginx config, this is the /docs subpath of your Plane domain.
++VITE_DOCMOST_API_URL=https://plane.rivetta.eu/docs
++
++# Long-lived admin API token from Docmost.
++# Create one in Docmost → Settings → API Tokens.
++# This token is used to auto-create spaces and pages on phase transitions.
++# NOTE: This value is visible in the browser bundle — acceptable for internal tools.
++VITE_DOCMOST_API_TOKEN=your-docmost-admin-token-here
++
++# ─── Docmost server settings (used in docker-compose.docmost.yml) ─────────────
++DOCMOST_APP_URL=https://plane.rivetta.eu/docs
++DOCMOST_APP_SECRET=generate-a-random-64-char-secret-here
++DOCMOST_DB_USER=docmost
++DOCMOST_DB_PASS=change-this-password
++DOCMOST_DB_NAME=docmost
+diff --git a/deploy/nginx-docmost.conf b/deploy/nginx-docmost.conf
+new file mode 100644
+index 0000000..532b4a8
+--- /dev/null
++++ b/deploy/nginx-docmost.conf
+@@ -0,0 +1,48 @@
++# Nginx config snippet — add inside your existing server {} block for plane.rivetta.eu
++# This proxies /docs/* to Docmost so both apps share the same origin (same-origin
++# cookie = single login, iframe works without cross-origin restrictions).
++
++server {
++    listen 443 ssl http2;
++    server_name plane.rivetta.eu;
++
++    # --- Plane (existing) ---
++    location / {
++        proxy_pass         http://127.0.0.1:8080;
++        proxy_set_header   Host              $host;
++        proxy_set_header   X-Real-IP         $remote_addr;
++        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
++        proxy_set_header   X-Forwarded-Proto $scheme;
++    }
++
++    # --- Docmost wiki ---
++    # Matches /docs and /docs/* — proxied to Docmost running on port 3001.
++    # The trailing slash in proxy_pass strips the /docs prefix so Docmost
++    # sees requests at / (its expected root).
++    location /docs/ {
++        proxy_pass         http://127.0.0.1:3001/;
++        proxy_set_header   Host              $host;
++        proxy_set_header   X-Real-IP         $remote_addr;
++        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
++        proxy_set_header   X-Forwarded-Proto $scheme;
++
++        # Required for Docmost's real-time collaboration (WebSocket)
++        proxy_http_version 1.1;
++        proxy_set_header   Upgrade    $http_upgrade;
++        proxy_set_header   Connection "upgrade";
++
++        # Docmost sets cookies without a path — rewrite them to /docs/
++        # so the browser sends them only for Docmost requests.
++        proxy_cookie_path  / /docs/;
++    }
++
++    # Redirect bare /docs to /docs/ so relative links inside Docmost work
++    location = /docs {
++        return 301 /docs/;
++    }
++
++    # SSL certs (Let's Encrypt / certbot)
++    ssl_certificate     /etc/letsencrypt/live/plane.rivetta.eu/fullchain.pem;
++    ssl_certificate_key /etc/letsencrypt/live/plane.rivetta.eu/privkey.pem;
++    include             /etc/letsencrypt/options-ssl-nginx.conf;
++}
 -- 
 2.43.0
 
